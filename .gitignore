@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+artifacts/
+logs/
+.dotnet-cli-home/
+.nuget/
+.local/
