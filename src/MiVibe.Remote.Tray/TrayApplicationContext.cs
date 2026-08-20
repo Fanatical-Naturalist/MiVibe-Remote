@@ -6,6 +6,9 @@ namespace MiVibe.Remote.Tray;
 
 internal sealed class TrayApplicationContext : ApplicationContext
 {
+    private static readonly int[] ReconnectDelaysSeconds = [2, 5, 10, 30];
+    private const int MaximumRetainedLogFiles = 10;
+
     private readonly Control dispatcher = new();
     private readonly NotifyIcon notifyIcon;
     private readonly ToolStripMenuItem statusItem;
@@ -15,16 +18,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem exitItem;
     private readonly object logLock = new();
     private readonly System.Windows.Forms.Timer? smokeTestTimer;
+    private readonly System.Windows.Forms.Timer reconnectTimer;
+    private readonly bool reconnectSmokeTest;
 
     private Process? bridgeProcess;
     private EventWaitHandle? shutdownEvent;
     private StreamWriter? logWriter;
     private bool stopping;
     private bool exiting;
+    private bool paused;
+    private bool reconnectScheduled;
+    private int reconnectAttempt;
 
-    public TrayApplicationContext(int? smokeTestSeconds)
+    public TrayApplicationContext(int? smokeTestSeconds, bool reconnectSmokeTest)
     {
+        this.reconnectSmokeTest = reconnectSmokeTest;
         dispatcher.CreateControl();
+        reconnectTimer = new System.Windows.Forms.Timer();
+        reconnectTimer.Tick += OnReconnectTimerElapsed;
+        TryOpenLog();
 
         statusItem = new ToolStripMenuItem("状态：正在启动") { Enabled = false };
         startItem = new ToolStripMenuItem("启动语音桥", null, OnStartClicked);
@@ -71,6 +83,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
             smokeTestTimer?.Dispose();
+            reconnectTimer.Dispose();
             dispatcher.Dispose();
             shutdownEvent?.Dispose();
             lock (logLock)
@@ -85,6 +98,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void OnStartClicked(object? sender, EventArgs args)
     {
+        paused = false;
+        reconnectAttempt = 0;
+        CancelReconnect();
         await StartBridgeAsync(showBalloon: true);
     }
 
@@ -123,6 +139,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         exiting = true;
+        paused = true;
+        CancelReconnect();
         exitItem.Enabled = false;
         await StopBridgeAsync("已停止");
         notifyIcon.Visible = false;
@@ -135,6 +153,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         OnExitClicked(sender, args);
     }
 
+    private void OnReconnectTimerElapsed(object? sender, EventArgs args)
+    {
+        reconnectTimer.Stop();
+        reconnectScheduled = false;
+        WriteLog($"Automatic reconnect attempt {reconnectAttempt} starting.");
+        _ = StartBridgeAsync(showBalloon: false);
+    }
+
     private Task StartBridgeAsync(bool showBalloon)
     {
         if (bridgeProcess is { HasExited: false })
@@ -143,6 +169,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         stopping = false;
+        paused = false;
+        CancelReconnect();
         SetStatus("正在连接遥控器", bridgeIsRunning: false);
 
         try
@@ -154,9 +182,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 EventResetMode.AutoReset,
                 eventName);
 
-            OpenLog();
             ProcessStartInfo startInfo = CreateProbeStartInfo(
-                $"--resident --shutdown-event \"{eventName}\"");
+                reconnectSmokeTest
+                    ? "--audio-status"
+                    : $"--resident --shutdown-event \"{eventName}\"");
             var process = new Process
             {
                 StartInfo = startInfo,
@@ -165,13 +194,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             process.OutputDataReceived += OnBridgeOutput;
             process.ErrorDataReceived += OnBridgeOutput;
             process.Exited += OnBridgeExited;
+            bridgeProcess = process;
 
             if (!process.Start())
             {
                 throw new InvalidOperationException("后台语音桥进程没有启动。");
             }
 
-            bridgeProcess = process;
+            WriteLog($"Bridge process started: pid={process.Id} automaticAttempt={reconnectAttempt}.");
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             SetStatus("正在初始化音频桥", bridgeIsRunning: true);
@@ -184,8 +214,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             SetStatus("启动失败", bridgeIsRunning: false);
-            ShowError("无法启动语音桥", exception);
+            WriteLog($"Bridge startup failed: {exception.GetType().Name}: {exception.Message}");
             CleanupExitedProcess();
+            ScheduleReconnect();
         }
 
         return Task.CompletedTask;
@@ -193,6 +224,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async Task StopBridgeAsync(string completedStatus)
     {
+        paused = !exiting;
+        CancelReconnect();
         Process? process = bridgeProcess;
         if (process is null || process.HasExited)
         {
@@ -231,17 +264,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        lock (logLock)
-        {
-            logWriter?.WriteLine(args.Data);
-        }
+        WriteLog($"[bridge] {args.Data}");
 
         if (args.Data.Contains("Resident bridge armed", StringComparison.Ordinal))
         {
             PostToUi(() =>
             {
+                bool recovered = reconnectAttempt > 0;
+                reconnectAttempt = 0;
                 SetStatus("运行中", bridgeIsRunning: true);
-                ShowBalloon("MiVibe Remote", "语音桥已就绪：开关键用于 Typeless，TV 键用于 Codex Voice。");
+                ShowBalloon(
+                    "MiVibe Remote",
+                    recovered
+                        ? "蓝牙语音桥已自动恢复。"
+                        : "语音桥已就绪：开关键用于 Typeless，TV 键用于 Codex Voice。");
             });
         }
         else if (args.Data.Contains("ATVV capture failed", StringComparison.OrdinalIgnoreCase) ||
@@ -253,17 +289,54 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void OnBridgeExited(object? sender, EventArgs args)
     {
+        var exitedProcess = sender as Process;
         PostToUi(() =>
         {
+            if (!ReferenceEquals(bridgeProcess, exitedProcess))
+            {
+                return;
+            }
+
             if (stopping || exiting)
             {
                 return;
             }
 
+            int? exitCode = exitedProcess is { HasExited: true }
+                ? exitedProcess.ExitCode
+                : null;
+            WriteLog($"Bridge process exited unexpectedly: exitCode={exitCode?.ToString() ?? "unknown"}.");
             CleanupExitedProcess();
-            SetStatus("意外停止", bridgeIsRunning: false);
-            ShowBalloon("MiVibe Remote", "语音桥已停止。可从托盘菜单重新启动。");
+            ScheduleReconnect();
         });
+    }
+
+    private void ScheduleReconnect()
+    {
+        if (paused || exiting || stopping || reconnectScheduled)
+        {
+            return;
+        }
+
+        int delayIndex = Math.Min(reconnectAttempt, ReconnectDelaysSeconds.Length - 1);
+        int delaySeconds = ReconnectDelaysSeconds[delayIndex];
+        reconnectAttempt++;
+        reconnectScheduled = true;
+        reconnectTimer.Interval = delaySeconds * 1000;
+        reconnectTimer.Start();
+        SetStatus($"等待自动重连（{delaySeconds} 秒）", bridgeIsRunning: true);
+        WriteLog($"Automatic reconnect scheduled: attempt={reconnectAttempt} delaySeconds={delaySeconds}.");
+
+        if (reconnectAttempt == 1)
+        {
+            ShowBalloon("MiVibe Remote", $"语音桥已断开，将在 {delaySeconds} 秒后自动重连。");
+        }
+    }
+
+    private void CancelReconnect()
+    {
+        reconnectTimer.Stop();
+        reconnectScheduled = false;
     }
 
     private async Task<string> RunProbeAsync(string arguments)
@@ -308,6 +381,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
     }
 
+    private void TryOpenLog()
+    {
+        try
+        {
+            OpenLog();
+        }
+        catch (IOException)
+        {
+            // A read-only install location must not prevent the remote from starting.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A future installer will move logs to a per-user data directory.
+        }
+    }
+
     private void OpenLog()
     {
         lock (logLock)
@@ -315,13 +404,48 @@ internal sealed class TrayApplicationContext : ApplicationContext
             logWriter?.Dispose();
             string logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
             Directory.CreateDirectory(logDirectory);
+            PruneLogs(logDirectory);
             string logPath = Path.Combine(
                 logDirectory,
-                $"tray-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.log");
+                $"tray-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.log");
             logWriter = new StreamWriter(logPath, append: false, Encoding.UTF8)
             {
                 AutoFlush = true
             };
+            logWriter.WriteLine($"{DateTimeOffset.Now:O} Tray host started.");
+        }
+    }
+
+    private static void PruneLogs(string logDirectory)
+    {
+        FileInfo[] oldLogs = new DirectoryInfo(logDirectory)
+            .GetFiles("tray-*.log")
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Skip(MaximumRetainedLogFiles - 1)
+            .ToArray();
+
+        foreach (FileInfo oldLog in oldLogs)
+        {
+            try
+            {
+                oldLog.Delete();
+            }
+            catch (IOException)
+            {
+                // A log may still be open from another tray instance. Keep it and continue.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Logging must never prevent the remote from starting.
+            }
+        }
+    }
+
+    private void WriteLog(string message)
+    {
+        lock (logLock)
+        {
+            logWriter?.WriteLine($"{DateTimeOffset.Now:O} {message}");
         }
     }
 
@@ -339,11 +463,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         shutdownEvent?.Dispose();
         shutdownEvent = null;
-        lock (logLock)
-        {
-            logWriter?.Dispose();
-            logWriter = null;
-        }
     }
 
     private void SetStatus(string status, bool bridgeIsRunning)
@@ -352,6 +471,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         notifyIcon.Text = $"MiVibe Remote：{status}";
         startItem.Enabled = !bridgeIsRunning && !exiting;
         pauseItem.Enabled = bridgeIsRunning && !exiting;
+        pauseItem.Text = reconnectScheduled ? "暂停自动重连" : "暂停语音桥";
     }
 
     private void ShowBalloon(string title, string message)

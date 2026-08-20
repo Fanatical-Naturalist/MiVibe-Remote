@@ -127,6 +127,8 @@ internal static class AtvvVoiceCapture
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<byte[]> audioStopped =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<GattSessionStatus> sessionEnded =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly ConcurrentQueue<byte[]> audioPackets = new();
         private readonly ConcurrentQueue<short[]> pcmChunks = new();
         private Exception? protocolError;
@@ -167,6 +169,7 @@ internal static class AtvvVoiceCapture
             control.ValueChanged += OnControlChanged;
             audio.ValueChanged += OnAudioChanged;
             gattSession.MaxPduSizeChanged += OnMaxPduSizeChanged;
+            gattSession.SessionStatusChanged += OnSessionStatusChanged;
 
             try
             {
@@ -384,6 +387,7 @@ internal static class AtvvVoiceCapture
                 audio.ValueChanged -= OnAudioChanged;
                 control.ValueChanged -= OnControlChanged;
                 gattSession.MaxPduSizeChanged -= OnMaxPduSizeChanged;
+                gattSession.SessionStatusChanged -= OnSessionStatusChanged;
                 if (gattSession.CanMaintainConnection)
                 {
                     gattSession.MaintainConnection = false;
@@ -407,7 +411,15 @@ internal static class AtvvVoiceCapture
                 int interval = remaining is null ? 8 : Math.Min(8, remaining.Value);
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
+                    Task delay = Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
+                    Task completed = await Task.WhenAny(delay, sessionEnded.Task);
+                    if (completed == sessionEnded.Task && !cancellationToken.IsCancellationRequested)
+                    {
+                        GattSessionStatus status = await sessionEnded.Task;
+                        throw new IOException($"GATT session ended with status {status}.");
+                    }
+
+                    await delay;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -423,8 +435,23 @@ internal static class AtvvVoiceCapture
                 {
                     byte[] extendCommand = [0x0E, streamId];
                     Console.WriteLine($"ATVV TX {Convert.ToHexString(extendCommand)} MIC_EXTEND");
-                    await WriteCommandAsync(extendCommand);
+                    if (!await WriteCommandAsync(extendCommand))
+                    {
+                        throw new IOException(
+                            "ATVV keepalive failed; the BLE session will be reopened by the tray host.");
+                    }
                 }
+            }
+        }
+
+        private void OnSessionStatusChanged(
+            GattSession sender,
+            GattSessionStatusChangedEventArgs args)
+        {
+            Console.WriteLine($"GATT session status changed: {args.Status}.");
+            if (args.Status != GattSessionStatus.Active)
+            {
+                sessionEnded.TrySetResult(args.Status);
             }
         }
 

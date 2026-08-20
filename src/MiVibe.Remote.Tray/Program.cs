@@ -7,7 +7,9 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         int? smokeTestSeconds = ParseSmokeTestSeconds(args);
-        Application.Run(new TrayApplicationContext(smokeTestSeconds));
+        bool reconnectSmokeTest = smokeTestSeconds is not null &&
+            args.Contains("--reconnect-smoke-test", StringComparer.OrdinalIgnoreCase);
+        Application.Run(new TrayApplicationContext(smokeTestSeconds, reconnectSmokeTest));
     }
 
     private static int? ParseSmokeTestSeconds(string[] args)
