@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -136,6 +137,8 @@ internal static class AtvvVoiceCapture
         private int audioPacketCount;
         private int discardedAudioPacketCount;
         private int physicalSegmentCount;
+        private int activePhysicalSegmentNumber;
+        private long physicalSegmentStartedTimestamp;
         private long adpcmByteCount;
         private long pcmSampleCount;
         private bool closeSent;
@@ -484,11 +487,11 @@ internal static class AtvvVoiceCapture
             switch (bytes[0])
             {
                 case 0x00 when bytes.Length >= 2 && bytes[1] == 0x02:
-                    EndPhysicalSegment();
+                    EndPhysicalSegment(bytes[1]);
                     SetTypelessActive(false);
                     break;
                 case 0x00:
-                    EndPhysicalSegment();
+                    EndPhysicalSegment(bytes.Length >= 2 ? bytes[1] : null);
                     SetTypelessActive(false);
                     audioStopped.TrySetResult(bytes);
                     break;
@@ -594,6 +597,7 @@ internal static class AtvvVoiceCapture
 
         private void BeginPhysicalSegment()
         {
+            int segment;
             lock (liveDecodeLock)
             {
                 if (!captureArmed)
@@ -602,19 +606,38 @@ internal static class AtvvVoiceCapture
                 }
 
                 liveDecoder.Reset();
+                segment = Interlocked.Increment(ref physicalSegmentCount);
+                activePhysicalSegmentNumber = segment;
+                physicalSegmentStartedTimestamp = Stopwatch.GetTimestamp();
                 physicalSegmentActive = true;
             }
 
-            int segment = Interlocked.Increment(ref physicalSegmentCount);
             Console.WriteLine($"ATVV physical microphone segment {segment} started; decoder reset.");
         }
 
-        private void EndPhysicalSegment()
+        private void EndPhysicalSegment(byte? stopReason)
         {
+            int segment;
+            long startedTimestamp;
             lock (liveDecodeLock)
             {
+                if (!physicalSegmentActive)
+                {
+                    return;
+                }
+
                 physicalSegmentActive = false;
+                segment = activePhysicalSegmentNumber;
+                startedTimestamp = physicalSegmentStartedTimestamp;
             }
+
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(startedTimestamp);
+            bool microphoneKeyDown = PhysicalMicrophoneKeyState.IsDown();
+            string reason = stopReason is null ? "unknown" : $"0x{stopReason.Value:X2}";
+            Console.WriteLine(
+                $"ATVV physical microphone segment {segment} ended after " +
+                $"{elapsed.TotalSeconds:F3}s; stopReason={reason}; " +
+                $"mappedF13Down={microphoneKeyDown}.");
         }
 
         private static void OnMaxPduSizeChanged(GattSession sender, object args)

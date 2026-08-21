@@ -91,31 +91,31 @@ internal static class Program
             "--voice-capture",
             DefaultVoiceCaptureSeconds,
             1,
-            60);
+            900);
         int? voiceLiveSeconds = ParseDurationOption(
             args,
             "--voice-live",
             DefaultVoiceCaptureSeconds,
             1,
-            60);
+            900);
         int? typelessLiveSeconds = ParseDurationOption(
             args,
             "--typeless-live",
             DefaultVoiceCaptureSeconds,
             1,
-            60);
+            900);
         int? codexVoiceLiveSeconds = ParseDurationOption(
             args,
             "--codex-voice-live",
             DefaultVoiceCaptureSeconds,
             1,
-            60);
+            900);
         int? tvCodexVoiceLiveSeconds = ParseDurationOption(
             args,
             "--tv-codex-voice-live",
             DefaultVoiceCaptureSeconds,
             1,
-            60);
+            900);
         bool residentMode = args.Contains("--resident", StringComparer.OrdinalIgnoreCase);
         double gainDb = ParseGainDb(args);
 
