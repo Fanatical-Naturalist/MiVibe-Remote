@@ -2,14 +2,32 @@ namespace MiVibe.Remote.Tray;
 
 internal static class Program
 {
+    private const string SingleInstanceMutexName =
+        "Local\\MiVibe.Remote.Tray-2717-32B8";
+
     [STAThread]
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        using var instanceMutex = new Mutex(
+            initiallyOwned: true,
+            SingleInstanceMutexName,
+            out bool createdNew);
+        if (!createdNew)
+        {
+            return;
+        }
+
         int? smokeTestSeconds = ParseSmokeTestSeconds(args);
         bool reconnectSmokeTest = smokeTestSeconds is not null &&
             args.Contains("--reconnect-smoke-test", StringComparer.OrdinalIgnoreCase);
-        Application.Run(new TrayApplicationContext(smokeTestSeconds, reconnectSmokeTest));
+        bool showStatusWindow = args.Contains(
+            "--show-status-window",
+            StringComparer.OrdinalIgnoreCase);
+        Application.Run(new TrayApplicationContext(
+            smokeTestSeconds,
+            reconnectSmokeTest,
+            showStatusWindow));
     }
 
     private static int? ParseSmokeTestSeconds(string[] args)

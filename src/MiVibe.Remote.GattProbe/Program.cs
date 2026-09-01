@@ -217,6 +217,8 @@ internal static class Program
                 Console.CancelKeyPress += cancelHandler;
                 try
                 {
+                    await using var batteryMonitor = new BatteryMonitor(servicesResult.Services);
+                    await batteryMonitor.StartAsync(cancellation.Token);
                     return await AtvvVoiceCapture.RunResidentAsync(
                         device,
                         servicesResult.Services,

@@ -8,13 +8,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private static readonly int[] ReconnectDelaysSeconds = [2, 5, 10, 30];
     private const int MaximumRetainedLogFiles = 10;
+    private const string RemoteDeviceName = "小米蓝牙语音遥控器";
 
     private readonly Control dispatcher = new();
     private readonly NotifyIcon notifyIcon;
     private readonly ToolStripMenuItem statusItem;
+    private readonly ToolStripMenuItem batteryItem;
     private readonly ToolStripMenuItem startItem;
     private readonly ToolStripMenuItem pauseItem;
     private readonly ToolStripMenuItem audioStatusItem;
+    private readonly ToolStripMenuItem startWithWindowsItem;
     private readonly ToolStripMenuItem exitItem;
     private readonly object logLock = new();
     private readonly System.Windows.Forms.Timer? smokeTestTimer;
@@ -29,8 +32,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool paused;
     private bool reconnectScheduled;
     private int reconnectAttempt;
+    private StatusWindow? statusWindow;
+    private ConnectionPhase connectionPhase = ConnectionPhase.Starting;
+    private string connectionDetail = "正在启动";
+    private int? reconnectDelaySeconds;
+    private int? batteryLevel;
+    private BatteryFreshness batteryFreshness = BatteryFreshness.Unknown;
+    private DateTimeOffset? batteryUpdatedAt;
 
-    public TrayApplicationContext(int? smokeTestSeconds, bool reconnectSmokeTest)
+    public TrayApplicationContext(
+        int? smokeTestSeconds,
+        bool reconnectSmokeTest,
+        bool showStatusWindow)
     {
         this.reconnectSmokeTest = reconnectSmokeTest;
         dispatcher.CreateControl();
@@ -39,17 +52,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
         TryOpenLog();
 
         statusItem = new ToolStripMenuItem("状态：正在启动") { Enabled = false };
-        startItem = new ToolStripMenuItem("启动语音桥", null, OnStartClicked);
+        batteryItem = new ToolStripMenuItem("电量：未知") { Enabled = false };
+        startItem = new ToolStripMenuItem("连接遥控器", null, OnStartClicked);
         pauseItem = new ToolStripMenuItem("暂停语音桥", null, OnPauseClicked);
         audioStatusItem = new ToolStripMenuItem("检查音频路由", null, OnAudioStatusClicked);
+        startWithWindowsItem = new ToolStripMenuItem(
+            "开机自动启动",
+            null,
+            OnStartWithWindowsClicked)
+        {
+            CheckOnClick = false,
+            Checked = StartupRegistration.IsEnabledForCurrentExecutable()
+        };
         exitItem = new ToolStripMenuItem("安全退出", null, OnExitClicked);
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(statusItem);
+        menu.Items.Add(batteryItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(startItem);
         menu.Items.Add(pauseItem);
         menu.Items.Add(audioStatusItem);
+        menu.Items.Add(startWithWindowsItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
@@ -60,10 +84,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true
         };
-        notifyIcon.DoubleClick += OnAudioStatusClicked;
+        notifyIcon.DoubleClick += OnNotifyIconDoubleClick;
 
-        SetStatus("正在启动", bridgeIsRunning: false);
+        SetStatus(
+            ConnectionPhase.Starting,
+            "正在启动",
+            bridgeIsRunning: false);
         _ = StartBridgeAsync(showBalloon: false);
+        if (showStatusWindow)
+        {
+            OnNotifyIconDoubleClick(this, EventArgs.Empty);
+        }
 
         if (smokeTestSeconds is not null)
         {
@@ -82,6 +113,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
+            statusWindow?.AllowCloseAndDispose();
+            statusWindow = null;
             smokeTestTimer?.Dispose();
             reconnectTimer.Dispose();
             dispatcher.Dispose();
@@ -96,8 +129,51 @@ internal sealed class TrayApplicationContext : ApplicationContext
         base.Dispose(disposing);
     }
 
+    private void OnNotifyIconDoubleClick(object? sender, EventArgs args)
+    {
+        StatusWindow window = GetOrCreateStatusWindow();
+        window.ApplyState(CreateUiState());
+        window.ShowOrActivate();
+    }
+
+    private StatusWindow GetOrCreateStatusWindow()
+    {
+        if (statusWindow is not null && !statusWindow.IsDisposed)
+        {
+            return statusWindow;
+        }
+
+        var window = new StatusWindow();
+        window.ConnectOrReconnectRequested += OnStartClicked;
+        window.PauseRequested += OnPauseClicked;
+        window.AudioRouteRequested += OnAudioStatusClicked;
+        window.StartWithWindowsToggleRequested += OnStartWithWindowsClicked;
+        window.SafeExitRequested += OnExitClicked;
+        statusWindow = window;
+        return window;
+    }
+
     private async void OnStartClicked(object? sender, EventArgs args)
     {
+        if (stopping || exiting)
+        {
+            return;
+        }
+
+        startItem.Enabled = false;
+        bool hasActiveBridge = bridgeProcess is { HasExited: false };
+        if (hasActiveBridge)
+        {
+            bool stopped = await TryStopBridgeAsync(
+                "已断开",
+                markPaused: false,
+                showBalloon: false);
+            if (!stopped)
+            {
+                return;
+            }
+        }
+
         paused = false;
         reconnectAttempt = 0;
         CancelReconnect();
@@ -106,7 +182,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void OnPauseClicked(object? sender, EventArgs args)
     {
-        await StopBridgeAsync("已暂停");
+        if (stopping || exiting)
+        {
+            return;
+        }
+
+        await TryStopBridgeAsync(
+            "已暂停",
+            markPaused: true,
+            showBalloon: true);
     }
 
     private async void OnAudioStatusClicked(object? sender, EventArgs args)
@@ -131,9 +215,33 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void OnStartWithWindowsClicked(object? sender, EventArgs args)
+    {
+        try
+        {
+            bool enable = !StartupRegistration.IsEnabledForCurrentExecutable();
+            StartupRegistration.SetEnabled(enable);
+            startWithWindowsItem.Checked = enable;
+            PublishUiState();
+            WriteLog($"Start with Windows changed: enabled={enable}.");
+            ShowBalloon(
+                "MiVibe Remote",
+                enable
+                    ? "已启用：下次登录 Windows 后自动启动。"
+                    : "已关闭开机自动启动。");
+        }
+        catch (Exception exception)
+        {
+            startWithWindowsItem.Checked =
+                StartupRegistration.IsEnabledForCurrentExecutable();
+            PublishUiState();
+            ShowError("无法修改开机自动启动", exception);
+        }
+    }
+
     private async void OnExitClicked(object? sender, EventArgs args)
     {
-        if (exiting)
+        if (exiting || stopping)
         {
             return;
         }
@@ -142,7 +250,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         paused = true;
         CancelReconnect();
         exitItem.Enabled = false;
-        await StopBridgeAsync("已停止");
+        bool stopped = await TryStopBridgeAsync(
+            "已停止",
+            markPaused: true,
+            showBalloon: false);
+        if (!stopped)
+        {
+            paused = true;
+            exiting = false;
+            exitItem.Enabled = true;
+            return;
+        }
+
         notifyIcon.Visible = false;
         ExitThread();
     }
@@ -168,10 +287,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return Task.CompletedTask;
         }
 
+        if (bridgeProcess is not null)
+        {
+            CleanupExitedProcess();
+        }
+
         stopping = false;
         paused = false;
         CancelReconnect();
-        SetStatus("正在连接遥控器", bridgeIsRunning: false);
+        SetStatus(
+            ConnectionPhase.Connecting,
+            "正在连接遥控器",
+            bridgeIsRunning: false);
 
         try
         {
@@ -204,7 +331,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             WriteLog($"Bridge process started: pid={process.Id} automaticAttempt={reconnectAttempt}.");
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            SetStatus("正在初始化音频桥", bridgeIsRunning: true);
+            SetStatus(
+                ConnectionPhase.Connecting,
+                "正在初始化音频桥",
+                bridgeIsRunning: true);
 
             if (showBalloon)
             {
@@ -213,66 +343,106 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            SetStatus("启动失败", bridgeIsRunning: false);
             WriteLog($"Bridge startup failed: {exception.GetType().Name}: {exception.Message}");
             CleanupExitedProcess();
+            SetStatus(
+                ConnectionPhase.Error,
+                "启动失败",
+                bridgeIsRunning: false);
             ScheduleReconnect();
         }
 
         return Task.CompletedTask;
     }
 
-    private async Task StopBridgeAsync(string completedStatus)
+    private async Task<bool> TryStopBridgeAsync(
+        string completedStatus,
+        bool markPaused,
+        bool showBalloon)
     {
-        paused = !exiting;
+        paused = markPaused;
         CancelReconnect();
         Process? process = bridgeProcess;
         if (process is null || process.HasExited)
         {
             CleanupExitedProcess();
-            SetStatus(completedStatus, bridgeIsRunning: false);
-            return;
+            stopping = false;
+            SetStatus(
+                markPaused ? ConnectionPhase.Paused : ConnectionPhase.Disconnected,
+                completedStatus,
+                bridgeIsRunning: false);
+            return true;
         }
 
         stopping = true;
-        SetStatus("正在安全停止", bridgeIsRunning: true);
+        SetStatus(
+            ConnectionPhase.Stopping,
+            "正在安全停止",
+            bridgeIsRunning: true);
         shutdownEvent?.Set();
 
-        bool exited = await Task.Run(() => process.WaitForExit(10_000));
+        bool exited = await Task.Run(() =>
+        {
+            bool completed = process.WaitForExit(10_000);
+            if (completed)
+            {
+                process.WaitForExit();
+            }
+
+            return completed;
+        });
         if (!exited)
         {
-            SetStatus("停止超时，请重试", bridgeIsRunning: true);
+            stopping = false;
+            SetStatus(
+                ConnectionPhase.Error,
+                "停止超时，请重试",
+                bridgeIsRunning: true);
             ShowBalloon(
                 "MiVibe Remote",
                 "语音桥仍在清理蓝牙连接，没有强制终止。请稍后再次点击安全退出。");
-            stopping = false;
-            return;
+            return false;
         }
 
         CleanupExitedProcess();
-        SetStatus(completedStatus, bridgeIsRunning: false);
-        if (!exiting)
+        stopping = false;
+        SetStatus(
+            markPaused ? ConnectionPhase.Paused : ConnectionPhase.Disconnected,
+            completedStatus,
+            bridgeIsRunning: false);
+        if (!exiting && showBalloon)
         {
             ShowBalloon("MiVibe Remote", "语音桥已暂停，遥控器按键钩子已恢复。");
         }
+
+        return true;
     }
 
     private void OnBridgeOutput(object sender, DataReceivedEventArgs args)
     {
-        if (args.Data is null)
+        if (args.Data is null ||
+            sender is not Process sourceProcess ||
+            !ReferenceEquals(bridgeProcess, sourceProcess))
         {
             return;
         }
 
         WriteLog($"[bridge] {args.Data}");
 
-        if (args.Data.Contains("Resident bridge armed", StringComparison.Ordinal))
+        if (BatteryBridgeProtocol.TryParse(args.Data, out BatteryBridgeEvent batteryEvent))
         {
-            PostToUi(() =>
+            PostBridgeToUi(sourceProcess, () => ApplyBatteryEvent(batteryEvent));
+        }
+        else if (args.Data.Contains("Resident bridge armed", StringComparison.Ordinal))
+        {
+            PostBridgeToUi(sourceProcess, () =>
             {
                 bool recovered = reconnectAttempt > 0;
                 reconnectAttempt = 0;
-                SetStatus("运行中", bridgeIsRunning: true);
+                SetStatus(
+                    ConnectionPhase.Connected,
+                    "运行中",
+                    bridgeIsRunning: true);
                 ShowBalloon(
                     "MiVibe Remote",
                     recovered
@@ -283,7 +453,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         else if (args.Data.Contains("ATVV capture failed", StringComparison.OrdinalIgnoreCase) ||
                  args.Data.Contains("was not found", StringComparison.OrdinalIgnoreCase))
         {
-            PostToUi(() => SetStatus("连接失败，请检查日志", bridgeIsRunning: true));
+            PostBridgeToUi(
+                sourceProcess,
+                () => SetStatus(
+                    ConnectionPhase.Error,
+                    "连接失败，请检查日志",
+                    bridgeIsRunning: true));
         }
     }
 
@@ -322,9 +497,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         int delaySeconds = ReconnectDelaysSeconds[delayIndex];
         reconnectAttempt++;
         reconnectScheduled = true;
+        reconnectDelaySeconds = delaySeconds;
         reconnectTimer.Interval = delaySeconds * 1000;
         reconnectTimer.Start();
-        SetStatus($"等待自动重连（{delaySeconds} 秒）", bridgeIsRunning: true);
+        SetStatus(
+            ConnectionPhase.ReconnectWaiting,
+            $"等待自动重连（{delaySeconds} 秒）",
+            bridgeIsRunning: true);
         WriteLog($"Automatic reconnect scheduled: attempt={reconnectAttempt} delaySeconds={delaySeconds}.");
 
         if (reconnectAttempt == 1)
@@ -337,6 +516,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         reconnectTimer.Stop();
         reconnectScheduled = false;
+        reconnectDelaySeconds = null;
     }
 
     private async Task<string> RunProbeAsync(string arguments)
@@ -463,15 +643,90 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         shutdownEvent?.Dispose();
         shutdownEvent = null;
+        MarkBatteryAsLastKnown();
     }
 
-    private void SetStatus(string status, bool bridgeIsRunning)
+    private void SetStatus(
+        ConnectionPhase phase,
+        string status,
+        bool bridgeIsRunning)
     {
+        connectionPhase = phase;
+        connectionDetail = status;
         statusItem.Text = $"状态：{status}";
         notifyIcon.Text = $"MiVibe Remote：{status}";
-        startItem.Enabled = !bridgeIsRunning && !exiting;
-        pauseItem.Enabled = bridgeIsRunning && !exiting;
+        startItem.Enabled = !stopping &&
+            !exiting &&
+            phase is not ConnectionPhase.Starting and
+                not ConnectionPhase.Connecting and
+                not ConnectionPhase.Stopping;
+        startItem.Text = bridgeIsRunning || reconnectScheduled
+            ? "重新连接遥控器"
+            : "连接遥控器";
+        pauseItem.Enabled = bridgeIsRunning &&
+            !stopping &&
+            !exiting &&
+            phase is not ConnectionPhase.Connecting;
         pauseItem.Text = reconnectScheduled ? "暂停自动重连" : "暂停语音桥";
+        exitItem.Enabled = !stopping && !exiting;
+        PublishUiState();
+    }
+
+    private void ApplyBatteryEvent(BatteryBridgeEvent batteryEvent)
+    {
+        switch (batteryEvent.Kind)
+        {
+            case BatteryBridgeEventKind.Level when batteryEvent.Level is int level:
+                batteryLevel = level;
+                batteryFreshness = BatteryFreshness.Current;
+                batteryUpdatedAt = DateTimeOffset.Now;
+                break;
+
+            case BatteryBridgeEventKind.Unknown:
+            case BatteryBridgeEventKind.Stale:
+                MarkBatteryAsLastKnown();
+                break;
+        }
+
+        PublishUiState();
+    }
+
+    private void MarkBatteryAsLastKnown()
+    {
+        batteryFreshness = batteryLevel is null
+            ? BatteryFreshness.Unknown
+            : BatteryFreshness.LastKnown;
+    }
+
+    private TrayUiState CreateUiState()
+    {
+        return new TrayUiState(
+            DeviceName: RemoteDeviceName,
+            Connection: connectionPhase,
+            Detail: connectionDetail,
+            ReconnectDelaySeconds: reconnectDelaySeconds,
+            BatteryPercent: batteryLevel,
+            BatteryFreshness: batteryFreshness,
+            BatteryUpdatedAt: batteryUpdatedAt,
+            StartWithWindows: startWithWindowsItem.Checked,
+            OperationInProgress: stopping ||
+                connectionPhase is ConnectionPhase.Starting or
+                    ConnectionPhase.Connecting or
+                    ConnectionPhase.Stopping);
+    }
+
+    private void PublishUiState()
+    {
+        batteryItem.Text = batteryFreshness switch
+        {
+            BatteryFreshness.Current when batteryLevel is int level =>
+                $"电量：{level}%",
+            BatteryFreshness.LastKnown when batteryLevel is int level =>
+                $"电量：{level}%（上次读取）",
+            _ => "电量：未知"
+        };
+
+        statusWindow?.ApplyState(CreateUiState());
     }
 
     private void ShowBalloon(string title, string message)
@@ -498,5 +753,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         dispatcher.BeginInvoke(action);
+    }
+
+    private void PostBridgeToUi(Process sourceProcess, Action action)
+    {
+        PostToUi(() =>
+        {
+            if (ReferenceEquals(bridgeProcess, sourceProcess))
+            {
+                action();
+            }
+        });
     }
 }
