@@ -1,5 +1,7 @@
 # MiVibe Remote
 
+English | [简体中文](README.zh-CN.md)
+
 Turn a Xiaomi Bluetooth voice remote into a hands-on voice input controller for Windows 11, Typeless, and Codex Voice.
 
 ![MiVibe Remote key guide](docs/assets/mivibe-remote-user-guide-dark.png)
