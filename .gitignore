@@ -8,3 +8,5 @@ logs/
 .dotnet-cli-home/
 .nuget/
 .local/
+/src/MiVibe.Remote.Tray/Assets/XiaomiRemote2ProOfficialPreview.jpg
+/src/MiVibe.Remote.Tray/Assets/UserOwnedRemote2ProCutout.png

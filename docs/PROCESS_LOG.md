@@ -47,7 +47,7 @@
 ### 用户要求
 
 - 不在 C 盘维护项目。
-- 项目和所有相关文档统一放到 `E:\05-Projects\2026-08-19-XiaomiVibeCoder\`。
+- 项目和所有相关文档统一放到 `<MiVibe-Remote 仓库目录>`。
 - 这是用户第一个 GitHub 开源项目，需要逐步解释并持续记录过程。
 - GitHub 连接在确实需要发布时再打开网页请求授权。
 
@@ -70,7 +70,7 @@
 - 在 E 盘重新编译成功：0 个错误、0 个警告。
 - 从 E 盘运行探针，再次唯一识别到 `VID 0x2717 / PID 0x32B8`、Usage `0x01 / 0x06` 的目标遥控器。
 - C 盘残留目录经确认不包含任何文件后已删除。
-- 当前项目唯一工作目录为 `E:\05-Projects\2026-08-19-XiaomiVibeCoder\`。
+- 当前项目唯一工作目录为 `<MiVibe-Remote 仓库目录>`。
 
 ## 2026-08-19：第一轮实体按键采样
 
@@ -821,3 +821,49 @@
 - 状态窗真实多显示器烟雾测试完成，发现并修复了高 DPI 下简介换行裁切；最终布局中的标题、连接卡、电量、四项操作和三行提示均可见。测试使用 `--reconnect-smoke-test`，子进程只执行只读音频状态检查，没有接管 BLE、VB-CABLE 或按键钩子。
 - 完整 Debug 与 Release 构建均通过，0 个警告、0 个错误。冻结的 0.1 artifact 和当前日常使用进程未停止、未修改。
 - 尚待实体联调：切换到 0.2 后验证主动重连、关闭/开启蓝牙的自动恢复、真实电量与 Notify、登录启动启停，以及 Typeless/Codex Voice 回归。
+
+### 0.2 视觉升级与 Codex Voice 快捷键迁移
+
+- 用户要求把状态窗口从基础深色工具面板升级为更接近 Apple/Typeless 的白色极简界面，并加入克制的科技感；同时指出 `Left Ctrl + 反引号` 与写代码冲突，希望使用 `Ctrl + Numpad Divide`。
+- 读取用户引用的设计讨论后，确定采用白色画布、灰阶层级、高留白、弱边框、银色遥控器和单一 Apple 蓝；科技感仅通过设备周围的低透明度信号光晕、点状轨道和 `BLE · ATVV 16 kHz · VB-CABLE` 标签表达。
+- 新增自绘遥控器控件，不引入外部图片或版权素材；方向环、确认、Home、开关、麦克风、菜单、TV、返回和音量均按实物布局显示，并明确标注不可用项。
+- 快捷键审计确认：只改注入组合不会释放反引号，因为旧 TV 钩子仍全局拦截所有 `VK_OEM_3`。为真正解决编码冲突，0.2 把 Voice 实体入口迁回菜单键 `VK_APPS 0x5D`，完全移除 OEM3 钩子。
+- `ToggleCodexVoice` 改为扫描码级 `Left Ctrl + Numpad Divide`；小键盘除号的按下和松开均带 extended 标志。菜单键长按自动重复仍由既有按下状态去抖为一次切换。
+- 界面同步显示“菜单 = Codex Voice · Ctrl + Num ÷”“TV = 反引号原样输入”，Codex Voice 工作流第一步改为轻触菜单键。
+- GATT 探针 Debug 构建通过，0 个警告、0 个错误。待实体门禁：Codex 设置录入组合键；手动组合不串触发 Typeless；菜单键开关 Voice；常驻期间电脑反引号/波浪号可输入；两条语音链路各回归一次。
+- 发布前复核补充了两个失败保护：若 `SendInput` 只发送了部分组合键事件，会尽力补发对应 key-up，降低 Ctrl 或小键盘除号粘住的风险；菜单钩子退出现在校验退出消息、线程收束和解除钩子的结果，不再无条件报告恢复成功。
+- 同一复核确认免驱 `VK_APPS` 钩子无法区分遥控器菜单键和电脑实体 `Menu/Application` 键。0.2 接受这一低频已知限制并在 README、发布范围和验收清单中披露；暂停或安全退出恢复原键。若日常使用仍不可接受，再进入设备级 HID filter 路线。
+- 首次快捷键 A/B：程序正确发送 `Left Ctrl + Numpad Divide`，Codex 打开键盘快捷键窗口，Voice 未启动；用户确认 Typeless 未被误触发。读取本机 `keybindings.json` 后确认录键结果已被保存成 `Ctrl+/`，与 Codex 内置命令确定性冲突。
+- 快速修复采用 `Left Ctrl + Left Alt + Numpad Divide`。它仍使用用户选择的小键盘除号，但归一化后为未冲突的 `Ctrl+Alt+/`；若第二轮实测仍失败，直接切换到独立的 `Ctrl + F14`，不继续在斜杠字符上叠加复杂兼容逻辑。
+
+### Voice 改用独立小键盘乘号，并分离旧任务错误
+
+- 手动 A/B 确认 `Ctrl + Alt + 主键盘 /` 能命中 Codex Voice；小键盘除号注入不能命中保存为普通 `/` 的全局快捷键，证明是键位归一化差异。
+- Voice 浮层打开后迅速关闭并闪过红字。桌面日志明确记录 `thread/settings/update` 返回 `thread not found`，随后 `Error starting realtime voice`；失败发生在实时语音和音频设备初始化之前，因此与 MiVibe、VB-CABLE、AirPods、网络和额度无关。
+- 失效的 Voice 任务仍记录在 Codex 的持久化状态中，所以恢复顺序改为：新建空白任务，从界面启动一次新的 Voice，再测试全局快捷键。
+- 用户确认 Typeless 本来就是独立的裸 `Numpad Divide`，建议 Voice 使用相邻的 `Numpad Multiply` 作为助记。第一版补丁曾尝试发送裸 `Numpad Multiply`。
+- 代码审计随后确认：Codex 设置界面不接受无 Ctrl/Alt 的 Voice 快捷键，并会把 `NumpadMultiply` 规范化为字符 `*`；Electron 又把 `*` 与真正的 `nummult` 视为不同 accelerator。为避免依赖 Codex 私有配置文件，裸乘号补丁在实体测试前撤回。
+- 0.2 最终兼容路径改为：在 Codex 中按 `Ctrl + Alt + Numpad Multiply` 录入，界面显示 `Ctrl + Alt + *` 属正常；MiVibe 发送 Left Ctrl + Left Alt + Left Shift + 主键盘 8 并完整逆序释放。Typeless 的 `Numpad Divide`、麦克风 F13 隐私门、TV/反引号原始输入均保持不变。
+- 发布前实体门禁：菜单键单次只开关一次 Voice；Typeless 不串触发；裸 `/`、`.`、`*`、反引号与小键盘乘号仍可输入。
+
+### Voice 状态恢复，并收敛 0.2 删除键职责
+
+- 清除 Codex 持久化的失效 Voice 任务引用后，用户在新任务中手动按 `Ctrl + Alt + Shift + 8` 已能正常打开 Voice；这确认 Codex 保存的 `Ctrl + Alt + *` 组合与 Voice 本身可用。遥控器菜单键仍需要 MiVibe 0.2 常驻运行后才能转换为该组合。
+- 用户希望为遥控器补充高频删除能力，同时不再牺牲 TV 键。最终方案确定为：菜单键负责 Codex Voice；TV 键保持原始输入；Home 每次新按下发送一次 `Backspace`，长按不连续删除。
+- 遥控器上带 `<` 图标的返回键和音量键此前已多轮确认在当前 Windows/固件组合下没有 Raw Input、翻译键盘或 `WM_APPCOMMAND` 用户态事件，因此 0.2 不把它们误标为可用，也不让其他实体键冒充。
+- 免驱代价同步披露：MiVibe 常驻时电脑实体 Home 与 `Menu/Application` 也会被系统级钩子占用；暂停语音桥或安全退出后恢复原行为。下一步实体回归检查单次删除、长按不连删、TV 原样输入和暂停/退出恢复。
+
+### Home 删除候选由 Backspace 改为扩展键 Delete
+
+- 用户确认菜单键打开 Codex Voice、开关键打开 Typeless 以及语音转写均正常；本轮只调整 Home 的编辑职责，并继续保持 TV 原样输入。
+- 用户测试 Home 时只看到光标跳到行首。复核运行状态后确认，当时仍是尚未加载新映射的旧 Debug 实例，因此系统原始 `Home` 行为被透传；这不是新版 Backspace 注入的实测结果。
+- 用户安全退出旧实例后选择不再继续 Backspace 候选，改为 Home 每次新按下发送一次扩展键 `Delete`；长按重复仍被抑制，避免连续删除。
+- 免驱限制随当前候选同步变化：MiVibe 常驻时，电脑实体 Home 也会发送一次扩展键 `Delete`；暂停或安全退出后恢复系统 Home。菜单键仍负责 Voice，返回（`<` 图标）与音量键继续标为用户态不可用。
+- 发布前实体门禁：在记事本安全文本中确认 Home 单击只删除光标后的一个字符、长按不连删、快速多次单击次数一致；同时回归 TV 原样输入、菜单 Voice、Typeless 语音转写，以及暂停/退出后电脑实体 Home/Menu 恢复。
+
+### 0.2 Preview 视觉验收与首次公开源码准备
+
+- 用户完成最终深色界面审核：宽屏按键指南、真实比例遥控器插画、标题、电量、版本提示和安全退出均显示完整，决定将当前版本作为 `0.2.0-alpha.1 / Preview` 推送到 GitHub。
+- 运行界面与仓库说明图只使用依据用户自有照片校准、去除品牌标识的插画；小米官网预览图、测试中间图、本地日志、音频和构建产物继续由 `.gitignore` 排除。
+- 首次公开仓库确定为 `Fanatical-Naturalist/MiVibe-Remote`，使用 MIT License；安装包、正式 `v0.2.0` 标签和 GitHub Release 继续等待完整安装与稳定性验收。
+- Release 独立输出构建通过，0 个警告、0 个错误；`dotnet format --verify-no-changes` 与 `git diff --check` 通过，未发现密钥、令牌、真实 BLE 地址或异常大文件。

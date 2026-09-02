@@ -18,7 +18,7 @@
 1. 打开 PowerShell，进入项目目录：
 
    ```powershell
-   cd "E:\05-Projects\2026-08-19-XiaomiVibeCoder"
+   cd "<MiVibe-Remote 仓库目录>"
    ```
 
 2. 为满足遥控器的“最近有用户操作”隐私限制，先短按一次遥控器任意可用按键，例如方向键。

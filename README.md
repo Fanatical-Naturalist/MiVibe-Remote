@@ -2,9 +2,13 @@
 
 把小米蓝牙语音遥控器变成 Windows 上的 Vibe Coding 控制器。
 
-当前冻结基线：`v0.1.0-prototype`。这是已通过本机实体测试、供日常使用的本地版本，暂未发布到 GitHub。冻结能力和限制见 [v0.1.0-prototype 说明](docs/RELEASE_V0.1.0_PROTOTYPE.md)。
+![MiVibe Remote 遥控器按键指南](docs/assets/mivibe-remote-user-guide-dark.png)
 
-当前开发线：`0.2.0-alpha.1`。冻结包不变；新代码正在验证蓝牙断线自动恢复，随后增加标准电池服务读取、发布基础和轻量设备状态窗口。
+当前公开预览版：`0.2.0-alpha.1`。它已经加入单实例托盘、蓝牙重新连接、电量提示、开机启动、深浅主题和按键工作流说明，适合源码体验与真实硬件测试；安装包和完整发布验收仍在后续阶段。详见 [0.2 发布范围](docs/RELEASE_V0.2_SCOPE.md) 与 [Changelog](CHANGELOG.md)。
+
+当前冻结基线：`v0.1.0-prototype`。这是已通过本机实体测试、供日常使用和回归的本地基线；冻结能力和限制见 [v0.1.0-prototype 说明](docs/RELEASE_V0.1.0_PROTOTYPE.md)。
+
+> Preview 提示：当前方案面向特定小米蓝牙语音遥控器和 Windows 11，依赖 Typeless/Codex、VB-CABLE 及用户自己的快捷键设置。请先阅读下方的已知限制，不要把它视为通用遥控器驱动。
 
 当前仓库处于硬件验证与可用原型阶段。第一版复用 Windows 自带的 Bluetooth LE HID 驱动，目标是不安装自研内核驱动即可完成：
 
@@ -15,7 +19,9 @@
 
 Typeless 分离式语音链路已完成实体端到端验证：轻触开关键开始，按住麦克风说话，松开后再轻触开关键结束。自然快速操作下，开关键到麦克风约 `165 ms`，麦克风到结束开关键约 `239 ms`，复杂随机语句可完整转写。
 
-Codex Voice 链路也已通过实体端到端验证。v0.1 可运行 `--tv-codex-voice-live`：轻触 TV 键打开或关闭 Voice，按住麦克风说话，松开即结束本段语音。实体验收中 TV 完成打开和关闭、GPT 正确理解并回复，程序退出后确认反引号恢复。当前无驱动实现有一项明确限制：该模式运行期间，电脑实体键盘的反引号键也会触发 Codex Voice；程序退出后按键立即恢复，不写入注册表，也不要求重启。设备级无损区分留给未来可选 HID filter 版本。
+Codex Voice 链路也已通过实体端到端验证。冻结的 v0.1 使用 TV 键并接受运行期间占用电脑反引号的限制。0.2 将实体入口迁移到遥控器菜单键；用户在 Codex 中用 `Ctrl + Alt + Numpad Multiply` 录入快捷键，Codex 当前会把它显示并保存为 `Ctrl + Alt + *`，MiVibe 发送同一规范化组合。Typeless 继续使用独立的 `Numpad Divide`；Home 每次新按下发送一次扩展键 `Delete`，长按不会连续删除；TV、电脑反引号以及裸 `/`、`.`、`*` 均保持原始输入。
+
+0.2 当前仍是免驱用户态方案：常驻期间会拦截系统中的实体 `Menu/Application` 和 `Home` 键，因此电脑键盘若带这些键，Menu 会触发 Codex Voice，Home 会发送一次扩展键 `Delete`。这些冲突会在 0.2 发布说明中明确披露；暂停语音桥或安全退出后立即恢复原键行为。遥控器上带 `<` 图标的返回键以及音量键在当前 Windows/固件组合下没有用户态事件，0.2 暂不映射；要只区分遥控器按键或补齐缺失事件，需要后续设备级 HID 过滤能力。
 
 ## 已确认的测试设备
 
@@ -56,13 +62,13 @@ dotnet run --project src/MiVibe.Remote.GattProbe -- --list
 
 GATT 通知模式不会写入厂商 characteristic，只会设置并在结束时清除标准 BLE 通知订阅描述符。
 
-启动 TV 键控制的 Codex Voice 语音桥（示例运行 45 秒）：
+启动菜单键控制的 Codex Voice 语音桥（示例运行 45 秒）：
 
 ```powershell
-dotnet run --project src/MiVibe.Remote.GattProbe -- --tv-codex-voice-live 45 --out logs/tv-codex-voice.wav
+dotnet run --project src/MiVibe.Remote.GattProbe -- --menu-codex-voice-live 45 --out logs/menu-codex-voice.wav
 ```
 
-看到 `TV-controlled Codex Voice armed` 后，轻触 TV 键打开 Voice，再按住遥控器麦克风说话。运行窗口内请暂时不要使用电脑键盘的反引号键；中止或正常退出都会释放临时钩子。
+先在 Codex 设置中把 Voice 快捷键录入为 `Ctrl + Alt + Numpad Multiply`；设置页最终显示 `Ctrl + Alt + *` 属于当前 Codex 的正常规范化结果。Typeless 继续使用小键盘除号 `Numpad Divide`。看到 `Menu-controlled Codex Voice armed` 后，轻触遥控器菜单键打开 Voice，再按住麦克风说话。Home 每次新按下只发送一次扩展键 `Delete`，长按不连删；TV 键、电脑反引号及裸 `/`、`.`、`*` 保持原始输入。常驻期间，电脑键盘上的实体 `Menu/Application` 与 `Home` 键也会被同一免驱钩子占用；暂停、中止或安全退出后恢复原键行为。
 
 常驻运行 Typeless 与 Codex Voice 共用的语音桥：
 
@@ -70,20 +76,27 @@ dotnet run --project src/MiVibe.Remote.GattProbe -- --tv-codex-voice-live 45 --o
 dotnet run --project src/MiVibe.Remote.GattProbe -- --resident
 ```
 
-常驻模式没有固定倒计时，按 `Ctrl+C` 安全退出。它不会把整段常驻会话无限保存在内存中；开关键仍负责 Typeless 的轻触开始/结束，TV 键负责 Codex Voice，实体麦克风键负责按住期间的实际采音。
+常驻模式没有固定倒计时，按 `Ctrl+C` 安全退出。它不会把整段常驻会话无限保存在内存中；开关键负责 Typeless 的轻触开始/结束，菜单键负责 Codex Voice，实体麦克风键负责按住期间的实际采音，Home 每次新按下负责一次扩展键 `Delete`，TV 键保持原始输入。
 
-## 托盘 MVP
+## 从源码启动 0.2 Preview
 
-构建后可直接启动无控制台窗口的托盘应用：
+准备条件：
+
+- Windows 11 x64 与 .NET 9 SDK；
+- 已在 Windows 中配对的小米蓝牙语音遥控器；
+- 已安装 VB-CABLE，并将 `CABLE Output` 设为默认录音和默认通信录音设备；
+- Typeless 语音输入绑定 `Numpad Divide`；Codex Voice 绑定 `Ctrl + Alt + Numpad Multiply`（设置页可能显示为 `Ctrl + Alt + *`）。
+
+构建并启动无控制台窗口的托盘应用：
 
 ```powershell
-dotnet build src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj
-./src/MiVibe.Remote.Tray/bin/Debug/net9.0-windows10.0.26100.0/MiVibe.Remote.Tray.exe
+dotnet build src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj -c Release
+./src/MiVibe.Remote.Tray/bin/Release/net9.0-windows10.0.26100.0/MiVibe.Remote.Tray.exe
 ```
 
-应用启动后自动连接遥控器。右键任务栏通知区域中的 MiVibe 图标可查看状态并执行连接/重新连接、暂停、音频路由检查、开机启动和安全退出；双击图标打开极简状态窗口。关闭状态窗口只隐藏到托盘。暂停、主动重连和退出都不会强制结束后台进程，而是先请求语音桥完成 `MIC_CLOSE`、取消 BLE 通知订阅并恢复临时按键钩子。
+应用启动后自动连接遥控器。右键任务栏通知区域中的 MiVibe 图标可查看状态并执行连接/重新连接、暂停、音频路由检查、开机启动和安全退出；双击图标打开可切换深色/浅色主题的极简状态窗口。窗口包含依据用户自有实拍图校准、去除品牌标识的遥控器工业设计插画、当前按键职责、两条语音工作流和克制的 BLE/ATVV/VB-CABLE 链路提示。关闭状态窗口只隐藏到托盘。暂停、主动重连和退出都不会强制结束后台进程，而是先请求语音桥完成 `MIC_CLOSE`、取消 BLE 通知订阅并恢复临时按键钩子。
 
-0.2 开发构建会读取标准蓝牙电量服务，并在托盘和状态窗口中区分“实时电量”“上次读取”和“未知”。开机自动启动默认关闭，启用后只写入当前用户的 Windows 登录启动项。每次启动的详细日志保存在托盘程序目录下的 `logs` 文件夹；安装器和正式图标仍待发布阶段完成。
+0.2 Preview 会读取标准蓝牙电量服务，并在托盘和状态窗口中区分“实时电量”“上次读取”和“未知”。开机自动启动默认关闭，启用后只写入当前用户的 Windows 登录启动项。每次启动的详细日志保存在托盘程序目录下的 `logs` 文件夹；安装器和正式图标仍待后续发布阶段完成。
 
 只读检查当前音频路由：
 
@@ -102,3 +115,7 @@ BLE 服务与 characteristic 维护在 [GATT 服务记录](docs/GATT_MAP.md)。
 ## 安全原则
 
 项目不会默认自动确认权限对话框。类似 “Allow once” 的动作必须显式启用、限制到指定应用，并保留可见反馈和紧急停用方式。
+
+## 许可证
+
+项目源码采用 [MIT License](LICENSE)。第三方软件（包括 VB-CABLE、Typeless、Codex 和 NAudio）分别遵循其自身许可证与使用条款，不随本仓库重新授权。

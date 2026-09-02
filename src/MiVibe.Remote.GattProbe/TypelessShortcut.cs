@@ -9,10 +9,13 @@ internal static class TypelessShortcut
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventScanCode = 0x0008;
-    private const ushort ScanLeftControl = 0x1D;
     private const ushort ScanRightControl = 0x1D;
     private const ushort ScanRightShift = 0x36;
-    private const ushort ScanOem3 = 0x29;
+    private const ushort ScanLeftControl = 0x1D;
+    private const ushort ScanLeftAlt = 0x38;
+    private const ushort ScanLeftShift = 0x2A;
+    private const ushort ScanDigit8 = 0x09;
+    private const ushort ScanDelete = 0x53;
 
     public static void ToggleDictation()
     {
@@ -24,7 +27,13 @@ internal static class TypelessShortcut
             CreateScanCodeInput(ScanRightControl, KeyEventExtendedKey | KeyEventKeyUp)
         ];
 
-        Send(inputs);
+        Input[] cleanupInputs =
+        [
+            CreateScanCodeInput(ScanRightShift, KeyEventKeyUp),
+            CreateScanCodeInput(ScanRightControl, KeyEventExtendedKey | KeyEventKeyUp)
+        ];
+
+        Send(inputs, cleanupInputs);
     }
 
     public static void ToggleCodexVoice()
@@ -32,20 +41,53 @@ internal static class TypelessShortcut
         Input[] inputs =
         [
             CreateScanCodeInput(ScanLeftControl, 0),
-            CreateScanCodeInput(ScanOem3, 0),
-            CreateScanCodeInput(ScanOem3, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftAlt, 0),
+            CreateScanCodeInput(ScanLeftShift, 0),
+            CreateScanCodeInput(ScanDigit8, 0),
+            CreateScanCodeInput(ScanDigit8, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftShift, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftAlt, KeyEventKeyUp),
             CreateScanCodeInput(ScanLeftControl, KeyEventKeyUp)
         ];
 
-        Send(inputs);
+        Input[] cleanupInputs =
+        [
+            CreateScanCodeInput(ScanDigit8, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftShift, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftAlt, KeyEventKeyUp),
+            CreateScanCodeInput(ScanLeftControl, KeyEventKeyUp)
+        ];
+
+        Send(inputs, cleanupInputs);
     }
 
-    private static void Send(Input[] inputs)
+    public static void SendDelete()
+    {
+        Input[] inputs =
+        [
+            CreateScanCodeInput(ScanDelete, KeyEventExtendedKey),
+            CreateScanCodeInput(ScanDelete, KeyEventExtendedKey | KeyEventKeyUp)
+        ];
+
+        Input[] cleanupInputs =
+        [
+            CreateScanCodeInput(ScanDelete, KeyEventExtendedKey | KeyEventKeyUp)
+        ];
+
+        Send(inputs, cleanupInputs);
+    }
+
+    private static void Send(Input[] inputs, Input[] cleanupInputs)
     {
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent != inputs.Length)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "SendInput failed.");
+            int error = Marshal.GetLastWin32Error();
+            _ = SendInput(
+                (uint)cleanupInputs.Length,
+                cleanupInputs,
+                Marshal.SizeOf<Input>());
+            throw new Win32Exception(error, "SendInput failed.");
         }
     }
 

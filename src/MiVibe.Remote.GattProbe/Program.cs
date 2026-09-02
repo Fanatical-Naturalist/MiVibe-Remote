@@ -51,10 +51,11 @@ internal static class Program
 
         if (args.Contains("--codex-voice-shortcut-test", StringComparer.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Focus Codex now. Ctrl+` will be sent in 5 seconds...");
+            Console.WriteLine(
+                "Focus Codex now. Ctrl+Alt+* will be sent in 5 seconds...");
             await Task.Delay(TimeSpan.FromSeconds(5));
             TypelessShortcut.ToggleCodexVoice();
-            Console.WriteLine("Ctrl+` scan-code shortcut sent once.");
+            Console.WriteLine("Ctrl+Alt+* scan-code shortcut sent once.");
             return 0;
         }
 
@@ -64,20 +65,20 @@ internal static class Program
             return 0;
         }
 
-        int? tvVoiceTestSeconds = ParseDurationOption(
+        int? menuVoiceTestSeconds = ParseDurationOption(
             args,
-            "--tv-voice-test",
+            "--menu-voice-test",
             20,
             5,
             60);
-        if (tvVoiceTestSeconds is not null)
+        if (menuVoiceTestSeconds is not null)
         {
             Console.WriteLine(
-                $"Temporary TV Voice test active for {tvVoiceTestSeconds} seconds. " +
-                "Press the remote TV key once. During this v0.1 test, the computer " +
-                "backtick key is also reserved; it is restored automatically on exit.");
-            using var tvVoiceHook = new TvVoiceShortcutHook();
-            await Task.Delay(TimeSpan.FromSeconds(tvVoiceTestSeconds.Value));
+                $"Temporary Menu Voice test active for {menuVoiceTestSeconds} seconds. " +
+                "Press the remote Menu key once, or press Home for one Delete. " +
+                "The computer backtick remains available; computer Home is reserved during the test.");
+            using var menuVoiceHook = new MenuVoiceShortcutHook();
+            await Task.Delay(TimeSpan.FromSeconds(menuVoiceTestSeconds.Value));
             return 0;
         }
 
@@ -110,9 +111,9 @@ internal static class Program
             DefaultVoiceCaptureSeconds,
             1,
             900);
-        int? tvCodexVoiceLiveSeconds = ParseDurationOption(
+        int? menuCodexVoiceLiveSeconds = ParseDurationOption(
             args,
-            "--tv-codex-voice-live",
+            "--menu-codex-voice-live",
             DefaultVoiceCaptureSeconds,
             1,
             900);
@@ -124,13 +125,13 @@ internal static class Program
             (voiceLiveSeconds is not null ? 1 : 0) +
             (typelessLiveSeconds is not null ? 1 : 0) +
             (codexVoiceLiveSeconds is not null ? 1 : 0) +
-            (tvCodexVoiceLiveSeconds is not null ? 1 : 0) +
+            (menuCodexVoiceLiveSeconds is not null ? 1 : 0) +
             (residentMode ? 1 : 0);
         if (selectedModes > 1)
         {
             Console.Error.WriteLine(
                 "Choose only one of --listen, --voice-capture, --voice-live, " +
-                "--typeless-live, --codex-voice-live, --tv-codex-voice-live, or --resident.");
+                "--typeless-live, --codex-voice-live, --menu-codex-voice-live, or --resident.");
             return 2;
         }
 
@@ -174,7 +175,7 @@ internal static class Program
             voiceLiveSeconds is not null ||
             typelessLiveSeconds is not null ||
             codexVoiceLiveSeconds is not null ||
-            tvCodexVoiceLiveSeconds is not null ||
+            menuCodexVoiceLiveSeconds is not null ||
             residentMode)
         {
             string outputPath = GetOption(args, "--out") ??
@@ -184,7 +185,7 @@ internal static class Program
             string? renderDeviceName = voiceLiveSeconds is not null ||
                                        typelessLiveSeconds is not null ||
                                        codexVoiceLiveSeconds is not null ||
-                                       tvCodexVoiceLiveSeconds is not null ||
+                                       menuCodexVoiceLiveSeconds is not null ||
                                        residentMode
                 ? GetOption(args, "--render-device") ?? DefaultRenderDeviceName
                 : null;
@@ -238,13 +239,13 @@ internal static class Program
                 device,
                 servicesResult.Services,
                 voiceCaptureSeconds ?? voiceLiveSeconds ?? typelessLiveSeconds ??
-                    codexVoiceLiveSeconds ?? tvCodexVoiceLiveSeconds!.Value,
+                     codexVoiceLiveSeconds ?? menuCodexVoiceLiveSeconds!.Value,
                 outputPath,
                 gainDb,
                 renderDeviceName,
                 typelessLiveSeconds is not null,
                 codexVoiceLiveSeconds is not null,
-                tvCodexVoiceLiveSeconds is not null);
+                menuCodexVoiceLiveSeconds is not null);
         }
 
         if (listenSeconds is null)
@@ -465,13 +466,14 @@ internal static class Program
         Console.WriteLine("  --voice-live [sec]     Capture and stream decoded PCM to VB-CABLE in real time");
         Console.WriteLine("  --typeless-live [sec]  Voice live plus automatic Typeless push-to-talk shortcut");
         Console.WriteLine("  --codex-voice-live [sec]  Voice live plus opening Codex Voice after bridge warm-up");
-        Console.WriteLine("  --tv-codex-voice-live [sec]  Voice live plus TV-key control of Codex Voice");
-        Console.WriteLine("  --resident             Run the v0.1 voice bridge until Ctrl+C");
+        Console.WriteLine("  --menu-codex-voice-live [sec]  Voice live plus Menu-key control of Codex Voice");
+        Console.WriteLine("  --resident             Run the resident voice bridge until Ctrl+C");
         Console.WriteLine("  --audio-status         Inspect CABLE Output and AirPods input/output routing");
         Console.WriteLine("  --shutdown-event <name>  Internal graceful-stop signal used by the tray app");
         Console.WriteLine("  --shortcut-test        Toggle Typeless on after 5 sec, then off after another 5 sec");
-        Console.WriteLine("  --codex-voice-shortcut-test  Send Ctrl+` once after 5 sec");
-        Console.WriteLine("  --tv-voice-test [sec]  Temporarily turn the TV/backtick key into Ctrl+`");
+        Console.WriteLine("  --codex-voice-shortcut-test  Send Ctrl+Alt+* once after 5 sec");
+        Console.WriteLine(
+            "  --menu-voice-test [sec]  Temporarily map Menu to Voice and Home to Delete");
         Console.WriteLine("  --out <wav path>       WAV output path for --voice-capture");
         Console.WriteLine("  --render-device <name> Playback endpoint for --voice-live (default: CABLE Input)");
         Console.WriteLine("  --gain-db <value>      PCM gain from -12 to +24 dB (default: +12 dB)");
@@ -482,7 +484,7 @@ internal static class Program
         Console.WriteLine("Voice capture explicitly writes only documented ATVV GET_CAPS/MIC_OPEN/MIC_CLOSE commands.");
         Console.WriteLine("Voice live uses the same commands and also writes decoded PCM to an existing playback endpoint.");
         Console.WriteLine("Typeless live temporarily suppresses physical F5 and injects RightCtrl+RightShift on HTT start/stop.");
-        Console.WriteLine("TV Codex Voice live reserves physical backtick globally while running; exit restores it.");
+        Console.WriteLine("Menu Codex Voice live reserves the physical Menu key while running; backtick stays available.");
     }
 }
 

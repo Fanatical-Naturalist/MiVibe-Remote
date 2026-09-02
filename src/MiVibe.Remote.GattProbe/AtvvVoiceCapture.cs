@@ -30,7 +30,7 @@ internal static class AtvvVoiceCapture
         string? renderDeviceName,
         bool controlTypeless,
         bool openCodexVoice,
-        bool controlCodexVoiceWithTv)
+        bool controlCodexVoiceWithMenu)
     {
         GattDeviceService? service = services.FirstOrDefault(item => item.Uuid == ServiceUuid);
         if (service is null)
@@ -65,7 +65,7 @@ internal static class AtvvVoiceCapture
             renderDeviceName,
             controlTypeless,
             openCodexVoice,
-            controlCodexVoiceWithTv,
+            controlCodexVoiceWithMenu,
             retainAudio: true,
             CancellationToken.None);
     }
@@ -110,7 +110,7 @@ internal static class AtvvVoiceCapture
             renderDeviceName,
             shouldControlTypeless: false,
             shouldOpenCodexVoice: false,
-            shouldControlCodexVoiceWithTv: true,
+            shouldControlCodexVoiceWithMenu: true,
             retainAudio: false,
             cancellationToken);
     }
@@ -150,7 +150,7 @@ internal static class AtvvVoiceCapture
         private CableAudioRenderer? liveRenderer;
         private double liveGainDb;
         private F5SuppressionHook? f5SuppressionHook;
-        private TvVoiceShortcutHook? tvVoiceShortcutHook;
+        private MenuVoiceShortcutHook? menuVoiceShortcutHook;
         private bool typelessActive;
         private bool controlTypeless;
         private bool retainSessionAudio;
@@ -162,7 +162,7 @@ internal static class AtvvVoiceCapture
             string? renderDeviceName,
             bool shouldControlTypeless,
             bool shouldOpenCodexVoice,
-            bool shouldControlCodexVoiceWithTv,
+            bool shouldControlCodexVoiceWithMenu,
             bool retainAudio,
             CancellationToken cancellationToken)
         {
@@ -278,19 +278,21 @@ internal static class AtvvVoiceCapture
                         : $"Capture armed for {captureSeconds} seconds. " +
                           "Start a fresh physical microphone press now; any pre-arm audio was discarded.");
 
-                if (shouldControlCodexVoiceWithTv)
+                if (shouldControlCodexVoiceWithMenu)
                 {
-                    tvVoiceShortcutHook = new TvVoiceShortcutHook();
+                    menuVoiceShortcutHook = new MenuVoiceShortcutHook();
                     Console.WriteLine(
-                        "TV-controlled Codex Voice armed. Tap TV to open or close Voice, then " +
-                        "hold the remote microphone button while speaking. v0.1 note: the " +
-                        "computer backtick key is also reserved until this process exits.");
+                        "Menu-controlled Codex Voice armed. Tap the remote Menu key to open or " +
+                        "close Voice, then hold the remote microphone button while speaking. " +
+                        "Tap Home for one Delete. The computer backtick key remains available " +
+                        "for coding; the physical computer Home key is reserved while this bridge runs.");
                 }
 
                 if (shouldOpenCodexVoice)
                 {
                     Console.WriteLine(
-                        "Codex Voice mode is ready. Focus Codex now; Ctrl+` will be sent in 5 seconds...");
+                        "Codex Voice mode is ready. Focus Codex now; Ctrl+Alt+* will be " +
+                        "sent in 5 seconds...");
                     await Task.Delay(TimeSpan.FromSeconds(5));
                     TypelessShortcut.ToggleCodexVoice();
                     Console.WriteLine(
@@ -397,7 +399,7 @@ internal static class AtvvVoiceCapture
                 }
 
                 throughputRequest?.Dispose();
-                tvVoiceShortcutHook?.Dispose();
+                menuVoiceShortcutHook?.Dispose();
                 liveRenderer?.Dispose();
                 EnsureTypelessStopped();
                 f5SuppressionHook?.Dispose();

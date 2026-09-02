@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MiVibe.Remote.GattProbe;
 
-internal sealed class TvVoiceShortcutHook : IDisposable
+internal sealed class MenuVoiceShortcutHook : IDisposable
 {
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
@@ -11,7 +11,8 @@ internal sealed class TvVoiceShortcutHook : IDisposable
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
     private const uint WmQuit = 0x0012;
-    private const uint VkOem3 = 0xC0;
+    private const uint VkApps = 0x5D;
+    private const uint VkHome = 0x24;
     private const uint LlkhfInjected = 0x00000010;
 
     private readonly ManualResetEventSlim ready = new(false);
@@ -21,17 +22,21 @@ internal sealed class TvVoiceShortcutHook : IDisposable
     private uint threadId;
     private Exception? startupError;
     private bool keyDown;
+    private bool homeKeyDown;
     private int blockedEventCount;
     private int voiceToggleCount;
+    private int deleteCount;
+    private bool unhookSucceeded = true;
+    private int unhookError;
     private bool disposed;
 
-    public TvVoiceShortcutHook()
+    public MenuVoiceShortcutHook()
     {
         callback = OnKeyboardEvent;
         thread = new Thread(RunMessageLoop)
         {
             IsBackground = true,
-            Name = "MiVibe TV Voice shortcut hook"
+            Name = "MiVibe menu-key Voice shortcut hook"
         };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -40,7 +45,7 @@ internal sealed class TvVoiceShortcutHook : IDisposable
         if (startupError is not null)
         {
             throw new InvalidOperationException(
-                "Could not install the temporary TV Voice shortcut hook.",
+                "Could not install the menu-key Voice shortcut hook.",
                 startupError);
         }
     }
@@ -53,16 +58,26 @@ internal sealed class TvVoiceShortcutHook : IDisposable
         }
 
         disposed = true;
-        if (threadId != 0)
-        {
+        bool quitPosted = threadId == 0 ||
             PostThreadMessage(threadId, WmQuit, IntPtr.Zero, IntPtr.Zero);
+        int quitError = quitPosted ? 0 : Marshal.GetLastWin32Error();
+        bool joined = thread.Join(TimeSpan.FromSeconds(2));
+        ready.Dispose();
+
+        if (!quitPosted || !joined || !unhookSucceeded)
+        {
+            Console.Error.WriteLine(
+                $"Menu Voice hook shutdown incomplete: quitPosted={quitPosted} " +
+                $"quitError={quitError} joined={joined} unhooked={unhookSucceeded} " +
+                $"unhookError={unhookError}. Windows will release any remaining hook " +
+                "when this process exits.");
+            return;
         }
 
-        thread.Join(TimeSpan.FromSeconds(2));
-        ready.Dispose();
         Console.WriteLine(
-            $"TV Voice hook released: blockedEvents={blockedEventCount} " +
-            $"voiceToggles={voiceToggleCount}. Physical backtick is restored.");
+            $"Menu Voice hook released: blockedEvents={blockedEventCount} " +
+            $"voiceToggles={voiceToggleCount} deletes={deleteCount}. " +
+            "Physical Menu and Home keys are restored.");
     }
 
     private void RunMessageLoop()
@@ -98,7 +113,12 @@ internal sealed class TvVoiceShortcutHook : IDisposable
 
         if (hook != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(hook);
+            if (!UnhookWindowsHookEx(hook))
+            {
+                unhookSucceeded = false;
+                unhookError = Marshal.GetLastWin32Error();
+            }
+
             hook = IntPtr.Zero;
         }
     }
@@ -110,7 +130,7 @@ internal sealed class TvVoiceShortcutHook : IDisposable
         {
             LowLevelKeyboardInput input = Marshal.PtrToStructure<LowLevelKeyboardInput>(lParam);
             bool injected = (input.Flags & LlkhfInjected) != 0;
-            if (input.VirtualKey == VkOem3 && !injected)
+            if (input.VirtualKey == VkApps && !injected)
             {
                 Interlocked.Increment(ref blockedEventCount);
                 bool isKeyUp = message is WmKeyUp or WmSysKeyUp;
@@ -121,7 +141,8 @@ internal sealed class TvVoiceShortcutHook : IDisposable
                     {
                         TypelessShortcut.ToggleCodexVoice();
                         Interlocked.Increment(ref voiceToggleCount);
-                        Console.WriteLine("TV/backtick pressed: Ctrl+` sent to Codex Voice.");
+                        Console.WriteLine(
+                            "Menu key pressed: Ctrl+Alt+* sent to Codex Voice.");
                     }
                     catch (Exception exception)
                     {
@@ -133,6 +154,34 @@ internal sealed class TvVoiceShortcutHook : IDisposable
                 else if (isKeyUp)
                 {
                     keyDown = false;
+                }
+
+                return new IntPtr(1);
+            }
+
+            if (input.VirtualKey == VkHome && !injected)
+            {
+                Interlocked.Increment(ref blockedEventCount);
+                bool isKeyUp = message is WmKeyUp or WmSysKeyUp;
+                if (!isKeyUp && !homeKeyDown)
+                {
+                    homeKeyDown = true;
+                    try
+                    {
+                        TypelessShortcut.SendDelete();
+                        Interlocked.Increment(ref deleteCount);
+                        Console.WriteLine("Home key pressed: one Delete sent.");
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.Error.WriteLine(
+                            $"Delete injection failed: {exception.GetType().Name}: " +
+                            exception.Message);
+                    }
+                }
+                else if (isKeyUp)
+                {
+                    homeKeyDown = false;
                 }
 
                 return new IntPtr(1);

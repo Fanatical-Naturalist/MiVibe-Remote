@@ -12,4 +12,9 @@
   <ItemGroup>
     <ProjectReference Include="..\MiVibe.Remote.GattProbe\MiVibe.Remote.GattProbe.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\UserOwnedRemote2ProIllustration.png"
+                      LogicalName="MiVibe.Remote.Tray.Assets.UserOwnedRemote2ProIllustration.png" />
+  </ItemGroup>
 </Project>

@@ -447,7 +447,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     "MiVibe Remote",
                     recovered
                         ? "蓝牙语音桥已自动恢复。"
-                        : "语音桥已就绪：开关键用于 Typeless，TV 键用于 Codex Voice。");
+                        : "语音桥已就绪：开关键用于 Typeless，菜单键用于 Codex Voice，Home 键用于 Delete。");
             });
         }
         else if (args.Data.Contains("ATVV capture failed", StringComparison.OrdinalIgnoreCase) ||
@@ -683,6 +683,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 break;
 
             case BatteryBridgeEventKind.Unknown:
+                batteryLevel = null;
+                batteryFreshness = BatteryFreshness.Unknown;
+                batteryUpdatedAt = null;
+                break;
+
             case BatteryBridgeEventKind.Stale:
                 MarkBatteryAsLastKnown();
                 break;
