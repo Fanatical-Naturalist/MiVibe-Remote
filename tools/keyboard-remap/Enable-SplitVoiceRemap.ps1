@@ -1,9 +1,32 @@
-#Requires -RunAsAdministrator
+#Requires -Version 5.1
 
 [CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
+
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+$isAdministrator = $currentPrincipal.IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdministrator) {
+    try {
+        $powerShellPath = (Get-Process -Id $PID).Path
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+        $elevatedProcess = Start-Process `
+            -FilePath $powerShellPath `
+            -Verb RunAs `
+            -ArgumentList $arguments `
+            -Wait `
+            -PassThru
+        exit $elevatedProcess.ExitCode
+    }
+    catch {
+        Write-Error 'Administrator approval is required to enable the MiVibe key mapping.'
+        exit 1223
+    }
+}
 
 $registryPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout'
 $valueName = 'Scancode Map'

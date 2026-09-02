@@ -312,7 +312,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ProcessStartInfo startInfo = CreateProbeStartInfo(
                 reconnectSmokeTest
                     ? "--audio-status"
-                    : $"--resident --shutdown-event \"{eventName}\"");
+                    : $"--resident --shutdown-event \"{eventName}\" " +
+                      $"--parent-pid {Environment.ProcessId}");
             var process = new Process
             {
                 StartInfo = startInfo,
@@ -539,19 +540,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static ProcessStartInfo CreateProbeStartInfo(string arguments)
     {
-        string probePath = Path.Combine(
+        string probeExecutablePath = Path.Combine(
+            AppContext.BaseDirectory,
+            "MiVibe.Remote.GattProbe.exe");
+        string probeAssemblyPath = Path.Combine(
             AppContext.BaseDirectory,
             "MiVibe.Remote.GattProbe.dll");
-        if (!File.Exists(probePath))
+
+        string fileName;
+        string processArguments;
+        if (File.Exists(probeExecutablePath))
         {
-            throw new FileNotFoundException("找不到语音桥组件。", probePath);
+            fileName = probeExecutablePath;
+            processArguments = arguments;
         }
+        else if (File.Exists(probeAssemblyPath))
+        {
+            // Development builds remain framework-dependent for a faster edit/run loop.
+            fileName = "dotnet";
+            processArguments = $"\"{probeAssemblyPath}\" {arguments}";
+        }
+        else
+        {
+            throw new FileNotFoundException(
+                "找不到语音桥组件。",
+                probeExecutablePath);
+        }
+
+        string workingDirectory = GetUserDataDirectory();
 
         return new ProcessStartInfo
         {
-            FileName = "dotnet",
-            Arguments = $"\"{probePath}\" {arguments}",
-            WorkingDirectory = AppContext.BaseDirectory,
+            FileName = fileName,
+            Arguments = processArguments,
+            WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -573,7 +595,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (UnauthorizedAccessException)
         {
-            // A future installer will move logs to a per-user data directory.
+            // Logging must never prevent the remote from starting.
         }
     }
 
@@ -582,7 +604,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         lock (logLock)
         {
             logWriter?.Dispose();
-            string logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
+            string logDirectory = Path.Combine(GetUserDataDirectory(), "logs");
             Directory.CreateDirectory(logDirectory);
             PruneLogs(logDirectory);
             string logPath = Path.Combine(
@@ -594,6 +616,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
             };
             logWriter.WriteLine($"{DateTimeOffset.Now:O} Tray host started.");
         }
+    }
+
+    private static string GetUserDataDirectory()
+    {
+        string localApplicationData = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        string directory = Path.Combine(localApplicationData, "MiVibe Remote");
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
     private static void PruneLogs(string logDirectory)

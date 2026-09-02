@@ -1,191 +1,42 @@
-# MiVibe Remote 开发计划
+# Development overview
 
-## 1. 产品目标
+MiVibe Remote is a Windows 11 WinForms tray application plus a separate BLE/audio bridge process.
 
-做一个 Windows 常驻应用，把小米蓝牙语音遥控器转换成可配置的 Vibe Coding 控制器。首个可发布版本聚焦可靠、低延迟、无需内核驱动的按键映射；麦克风支持作为并行实验能力推进。
+## Architecture
 
-### 目标场景
+- `MiVibe.Remote.Tray` owns the tray icon, status window, battery display, startup preference, and reconnect policy.
+- `MiVibe.Remote.GattProbe` connects to the paired BLE remote, negotiates ATVV 1.x, decodes microphone audio, and renders PCM to VB-CABLE.
+- The release keeps the bridge as a separate process so it can be stopped safely and restarted after a disconnect.
 
-1. 麦克风实体键一键启动或停止 Typeless 语音输入（当前用户配置为右 `Ctrl + 右 Shift`），并同步启停遥控器麦克风采集。
-2. 菜单实体键一键发送 Codex Voice 快捷键（在 Codex 中按 `Ctrl + Alt + Numpad Multiply` 录入，实际保存为 `Ctrl + Alt + *`）；TV、电脑反引号与裸 `/`、`.`、`*` 保持原始输入。
-3. Home 实体键每次新按下发送一次扩展键 `Delete`；长按不启用键盘自动重复，避免意外连续删除。
-4. 可选的 Vibe Coding 动作，例如在受限条件下触发 “Allow once”。
-5. 单击、双击、长按可以绑定不同动作。
+## Local development
 
-### 非目标
+Requirements: Windows 11 24H2+, .NET 9 SDK, Bluetooth LE, the tested remote, and VB-CABLE.
 
-- 第一阶段不编写或分发 Windows 内核驱动。
-- 第一阶段不假设语音数据是标准 Windows 麦克风输入。
-- 不通过屏幕坐标做脆弱的盲点点击。
-- 不默认启用会批准权限、执行命令或产生其他副作用的宏。
-
-## 2. 已验证硬件事实（2026-08-19）
-
-Windows PnP 枚举结果：
-
-- 设备名：小米蓝牙语音遥控器
-- VID/PID：`2717:32B8`
-- 传输：Bluetooth Low Energy
-- 标准 HID 服务：`00001812-0000-1000-8000-00805F9B34FB`
-- 系统创建了 `HID Keyboard Device`，Top-Level Collection 为 Generic Desktop / Keyboard（Usage Page `0x01`, Usage `0x06`）
-- 电池服务：`0x180F`
-- 设备信息服务：`0x180A`
-- 自定义 GATT 服务：
-  - `000001BF-0000-1000-8000-00805F9B34FB`
-  - `8A7A0001-2C42-C2A2-0F36-41928C259B78`
-  - `AB5E0001-5A21-4F05-BC7D-AF01F617B664`
-- 尚未发现对应的 Windows 音频输入端点。
-
-结论：按键应优先走 Windows Raw Input；麦克风需要枚举并记录自定义 GATT characteristic，再结合按住语音键时的数据变化推断协议。
-
-## 3. 建议架构
-
-```text
-BLE Remote
-  ├─ Standard HID ──> Windows HID driver ──> Raw Input capture
-  │                                            └─ gesture recognizer
-  │                                                └─ mapping engine
-  │                                                    └─ safe action executor
-  └─ Custom GATT ──> microphone research probe ──> decoder (later)
-
-Desktop app
-  ├─ tray/background service
-  ├─ connection and battery status
-  ├─ visual button mapper
-  ├─ profiles: Codex / Typeless / custom
-  └─ diagnostics and exportable logs
+```powershell
+dotnet restore src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj
+dotnet build src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj --configuration Release
+dotnet run --project src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj -- --show-status-window
 ```
 
-推荐技术栈：`.NET 9 + WPF`。理由是本机已经具备 .NET 9，Raw Input、SendInput、Windows 前台窗口识别和 BLE API 都能在同一进程内完成，打包为单文件也比较直接。若未来要跨平台，再把设备事件、手势识别和映射核心抽成独立库。
+## Release build
 
-## 4. 默认按键方案
+The packaging script publishes both processes as self-contained `win-x64` applications, creates a portable ZIP, compiles an Inno Setup installer, and writes SHA-256 checksums.
 
-| 实体按键 | 单击建议 | 长按建议 | 备注 |
-|---|---|---|---|
-| 电源 | 待确认 | 退出或暂停映射 | 避免实际关机语义 |
-| 麦克风 | Typeless：右 `Ctrl + 右 Shift` | 待确认 | 已确认；必须精确注入右侧修饰键 |
-| 方向环 | 方向键 | 重复方向键 | 支持列表/权限弹窗导航 |
-| 确认 | `Enter` | 可配置 | 双击默认禁用 |
-| 返回（`<` 图标） | 暂不可用 | 暂不可用 | 当前 Windows 用户态无法收到该实体键事件 |
-| Home | 一次扩展键 `Delete` | 不连删 | 每次新按下只删除光标后的一个字符；0.2 不启用长按重复 |
-| 音量 + / - | 暂不可用 | 暂不可用 | 当前 Windows 用户态无法收到实体键事件 |
-| 菜单 | Codex Voice：`Ctrl + Alt + *` | 同单击去抖 | 录入时按 `Ctrl + Alt + Num ×`；与 Typeless 的裸 `Numpad Divide` 分离 |
-| TV | 原样输入 | 原样输入 | v0.1 曾用于 Voice；0.2 不拦截、不改写 |
+```powershell
+.\tools\Publish-Release.ps1
+```
 
-真实映射以按键探针采集的数据为准，不根据遥控器图标猜键码。免驱钩子运行时，电脑实体 `Home` 和 `Menu/Application` 也分别被占用为一次扩展键 `Delete` 与 Codex Voice；暂停或安全退出 MiVibe 后恢复原键行为。
+The installer compiler is intentionally not committed. Install the current Inno Setup locally or pass its `ISCC.exe` path to the script.
 
-## 5. 迭代里程碑
+## Preview release checks
 
-### M0：硬件探测（当前）
+- Build, packaging, and checksum verification pass.
+- Publish unsigned hardware previews only as GitHub pre-releases with a SmartScreen warning.
 
-- [x] 识别 BLE、HID、VID/PID 与服务 UUID。
-- [x] 建立 Raw Input 设备清单工具。
-- [ ] 采集每个实体按键的按下/松开事件。
-- [ ] 确认语音键是否产生 HID 事件。
-- [ ] 导出第一份设备兼容性快照。
+## Stable release gates
 
-验收：在普通键盘同时存在时，日志仍能可靠标记来自 `2717:32B8` 的事件。
+- Install and launch on a clean Windows 11 24H2 x64 machine with no preinstalled .NET.
+- Verify missing-dependency diagnostics, BLE reconnect, audio capture, Typeless, Codex Voice, startup toggle, upgrade, and uninstall.
+- Before a stable release: broaden device discovery, remove or safely replace the global scancode mapping, migrate to .NET 10 LTS, and sign the application and installer.
 
-### M1：无界面映射 MVP
-
-当前状态：已确认为 v0.1 首要交付目标；完成并通过稳定性验证后，再进入完整可视化界面开发。
-
-常驻语音核心已完成第一版：`--resident` 无固定时限运行，流式音频不在内存中无限累积，`Ctrl+C` 会关闭 ATVV、取消订阅并恢复临时按键钩子。0.2 已把 Voice 钩子从 TV/反引号迁到菜单键，以恢复编码所需的反引号输入；Home 每次新按下固定为一次扩展键 `Delete`，长按不连删。
-
-托盘 MVP 已实现：自动启动隐藏语音桥、状态菜单、暂停/恢复、音频路由体检、安全退出和当前用户级开机启动。托盘通过 Windows 命名事件请求子进程正常清理，不使用强制结束；两轮自动测试均无残留进程。`0.2.0-alpha.1` 已加入 GATT 断线检测、2/5/10/30 秒封顶退避重连与最近 10 份托盘日志保留；自动调度测试通过，完整实体故障注入记录仍待补。
-
-0.2 后续顺序固定为：先完成实体蓝牙断开/恢复验收；再读取标准 Battery Service `0x180F` / Battery Level `0x2A19` 并向托盘提供稳定状态；随后处理开机启动、日志和安装包；最后制作轻量前端。电量属于蓝牙数据层，不等待前端阶段才开始实现。
-
-0.2 的冻结发布范围已进一步收敛为四项：单实例托盘前端、主动蓝牙连接/重新连接按钮、电量提示、开机自动启动。完整范围与验收见 `docs/RELEASE_V0.2_SCOPE.md`；四项稳定后即可冻结 0.2 并推送 GitHub，其余产品能力不再扩张本版本。
-
-0.1 首次用户验收已通过：路由弹窗中文正常、CABLE/AirPods 三项检查通过，TV 键从托盘后台桥成功打开 Codex Voice。0.2 的菜单键 / `Ctrl + Alt + *` 迁移待执行同等实体回归。
-
-- 定义 JSON 配置格式（设备过滤、单击/长按/双击、动作）。
-- 实现按下、松开、去抖、长按和双击状态机。
-- 用 `SendInput` 精确发送左右修饰键。
-- 实现启动应用、聚焦已有窗口、发送快捷键、切换 profile。
-- 对话切换优先提供“上一项/下一项”或用户绑定的项目槽位；只能在确认目标为 Codex/ChatGPT 时执行，找不到目标时安全失败。
-- 增加暂停开关和 dry-run 模式。
-
-验收：连续使用 30 分钟无粘键；断连重连后自动恢复；菜单键每次按下只切换一次 Voice；Home 每次新按下只发送一次扩展键 `Delete`、删除光标后的一个字符且长按不连删；Typeless 不被 Voice 组合串触发；TV、反引号、波浪号以及裸 `/`、`.`、`*` 均保持原始输入；暂停或安全退出后电脑实体 Home/Menu 恢复。
-
-架构决策：M1/M2 用户态路线已确认优先于 HID filter driver；缺失按键不阻塞此里程碑。
-交付决策：先做可日常使用的后台常驻版，完整可视化按键映射器随后在 M2 实现。
-
-### M2：桌面 UI 与托盘
-
-0.2 采用轻量状态窗口：设备卡、连接/重连状态、电量、启动/暂停、音频路由体检，以及基于用户自有遥控器照片校准的只读按键指南和两条语音工作流。它复用现有 WinForms 托盘，不在此阶段引入新的前端框架；可编辑映射器保留为后续增强。
-
-- 连接、信号、电池、最后按键状态。
-- 与实物一致的可点击遥控器示意图。
-- 下拉选择动作、快捷键录制、恢复默认、Codex 预设。
-- 冲突提示、映射测试、日志导出。
-- 开机启动可选，默认关闭。
-
-验收：新用户无需编辑配置文件即可完成配对后的映射。
-
-### M1.5：遥控器麦克风可行性与 Typeless 桥接
-
-这项能力由实验性功能提升为核心使用需求，但仍保持为独立模块，避免阻塞按键映射核心的开发和测试。
-
-当前状态：Typeless 分离式语音输入和 v0.1 的 TV 控制 Codex Voice 已通过实体端到端验收；0.2 已把 Voice 入口迁移到菜单键并改发 Codex 规范化后的 `Ctrl + Alt + *`，待完成 Voice 任务状态重置、Voice/Typeless 不串触发、裸符号键回归和电脑实体 Menu 键限制的实体验收。
-
-- 向 `ATVV_CHAR_TX` 发送协议规定的能力查询，记录 `ATVV_CHAR_CTL` 响应。
-- 协商 16 kHz/8 kHz ADPCM，发送 `MIC_OPEN`，捕获 `ATVV_CHAR_AUDIO` 通知。
-- 将采集结果先解码并保存为 WAV，验证人声质量、丢包和时序。
-- 把 PCM 音频送入 Windows 录音端点，使 Typeless 能选择该麦克风。
-- 原型使用单独安装的 VB-CABLE；MiVibe 不在未经确认的情况下捆绑或静默安装第三方驱动。
-- 麦克风键按下时协调“启动音频流”和 Typeless 快捷键的顺序；再次按下时关闭两者。
-
-验收分两级：第一步能稳定录制并还原一段可听 WAV；第二步 Typeless 能实时接收该音频并完成语音输入。
-
-### M3：安全的 Vibe Coding 动作
-
-- 前台进程 allowlist（例如仅 Codex）。
-- “Allow once” 采用可审计的键盘导航方案；不得依赖固定屏幕坐标。
-- 敏感动作默认关闭，启用时明确警告。
-- 双动作撤销/紧急暂停，例如长按电源键。
-
-验收：在非目标应用、窗口标题不符或焦点未知时拒绝执行敏感动作。
-
-### M4：麦克风兼容性扩展
-
-- 枚举自定义 GATT characteristic、属性和 descriptor。
-- 对比语音键空闲、按下、按住、松开四个阶段的通知流。
-- 识别启停控制帧、序号、采样率、编码（可能为 ADPCM/Opus/厂商格式）。
-- 解码后先写 WAV 验证，再考虑虚拟麦克风或直接接入转写。
-
-验收：可重复录制一句话并还原为可听音频。若协议加密或需要电视端握手，则记录证据并把麦克风标记为实验性，不阻塞 v1.0。
-
-### M5：开源发布
-
-- 选择 MIT 或 Apache-2.0 许可证。
-- 增加中英双语 README、支持设备表、隐私说明和故障排查。
-- 自动构建、签名策略、版本化配置迁移、可复现 release。
-- 发布 `v0.1.0` 按键版；麦克风能力按成熟度单独标记。
-
-### Future：可选 HID filter driver
-
-- 仅当用户态 v0.1 稳定且缺失按键的价值足以覆盖安装风险时启动。
-- 独立安装包、独立风险说明、独立版本兼容矩阵，不与普通用户态应用强绑定。
-- 在投入 WDK、测试签名和驱动发布成本前，先验证厂商 report ID 中确实存在所需按键数据。
-- 若日常使用证明全局占用电脑 `Menu/Application` 或 `Home` 键仍不可接受，或希望取得返回/音量键事件，为遥控器增加设备级无损区分；正式发布需纳入驱动签名、安装/卸载回退和 Windows 版本兼容测试。
-
-## 6. 测试矩阵
-
-- Windows 11：前台、后台、锁屏/解锁、睡眠/唤醒、蓝牙断连/重连。
-- 事件：单击、快速连击、长按、多个方向键快速切换、低电量。
-- 应用：Codex、Typeless、记事本（安全基线）、非目标应用。
-- 输入：主键盘与遥控器同时输入，确认设备隔离。
-- 蓝牙共存：AirPods 播放 + 小米遥控器 BLE/ATVV 输入；确认默认录音仍为 `CABLE Output`，AirPods 麦克风未抢占，长时间播放与采音均无明显丢包。
-- 安全：映射暂停、配置损坏、目标窗口不存在、权限弹窗状态未知。
-
-## 7. 当前开放问题
-
-这些问题不阻塞 M0，但会在 M1/M2 前确认：
-
-1. 遥控器开麦失败时，是否仍触发 Typeless（建议失败时不触发）。
-2. Voice 快捷键和 Typeless 快捷键是否允许用户在 UI 中自行录制（建议允许）。
-3. “Allow once” 的期望交互：直接触发，还是先显示 1 秒确认提示（建议后者）。
-4. 是否只支持 Windows 11（建议 v0.1 只承诺 Windows 11）。
-5. 开源许可证选择 MIT 还是 Apache-2.0。
+Detailed hardware and protocol experiments in this repository are historical engineering references, not end-user instructions.

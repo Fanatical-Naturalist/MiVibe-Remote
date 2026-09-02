@@ -1,9 +1,36 @@
-#Requires -RunAsAdministrator
+#Requires -Version 5.1
 
 [CmdletBinding()]
-param()
+param(
+    [switch]$CheckOnly
+)
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $CheckOnly) {
+    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+    $isAdministrator = $currentPrincipal.IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdministrator) {
+        try {
+            $powerShellPath = (Get-Process -Id $PID).Path
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+            $elevatedProcess = Start-Process `
+                -FilePath $powerShellPath `
+                -Verb RunAs `
+                -ArgumentList $arguments `
+                -Wait `
+                -PassThru
+            exit $elevatedProcess.ExitCode
+        }
+        catch {
+            Write-Error 'Administrator approval is required to disable the MiVibe key mapping.'
+            exit 1223
+        }
+    }
+}
 
 $registryPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout'
 $valueName = 'Scancode Map'
@@ -50,7 +77,17 @@ $allowedHex = @(
 )
 
 if ($existingHex -notin $allowedHex) {
+    if ($CheckOnly) {
+        Write-Host 'A non-MiVibe Scancode Map is present. It will not be changed.'
+        exit 0
+    }
+
     throw "The current Scancode Map is not a MiVibe-managed value. Nothing was removed. Existing value: $existingHex"
+}
+
+if ($CheckOnly) {
+    Write-Host 'An exact MiVibe-managed Scancode Map is present.'
+    exit 10
 }
 
 Remove-ItemProperty -LiteralPath $registryPath -Name $valueName

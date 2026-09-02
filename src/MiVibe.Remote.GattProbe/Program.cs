@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
@@ -12,6 +13,8 @@ internal static class Program
     private const int DefaultListenSeconds = 45;
     private const int DefaultVoiceCaptureSeconds = 8;
     private const string DefaultRenderDeviceName = "CABLE Input";
+    private const string ResidentMutexName =
+        "Local\\MiVibe.Remote.GattProbe-2717-32B8";
 
     private static readonly HashSet<Guid> ListenServiceAllowlist =
     [
@@ -27,6 +30,20 @@ internal static class Program
 
     [STAThread]
     private static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            return await RunAsync(args);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"MiVibe Remote could not start: {exception.Message}");
+            return 9;
+        }
+    }
+
+    private static async Task<int> RunAsync(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -118,6 +135,26 @@ internal static class Program
             1,
             900);
         bool residentMode = args.Contains("--resident", StringComparer.OrdinalIgnoreCase);
+        string? parentProcessIdValue = GetOption(args, "--parent-pid");
+        int? parentProcessId = null;
+        if (parentProcessIdValue is not null)
+        {
+            if (!int.TryParse(parentProcessIdValue, out int parsedParentProcessId) ||
+                parsedParentProcessId <= 0)
+            {
+                Console.Error.WriteLine("--parent-pid must be a positive process ID.");
+                return 2;
+            }
+
+            parentProcessId = parsedParentProcessId;
+        }
+
+        if (parentProcessId is not null && !residentMode)
+        {
+            Console.Error.WriteLine("--parent-pid is valid only with --resident.");
+            return 2;
+        }
+
         double gainDb = ParseGainDb(args);
 
         int selectedModes = (listenSeconds is not null ? 1 : 0) +
@@ -133,6 +170,19 @@ internal static class Program
                 "Choose only one of --listen, --voice-capture, --voice-live, " +
                 "--typeless-live, --codex-voice-live, --menu-codex-voice-live, or --resident.");
             return 2;
+        }
+
+        bool residentMutexCreated = true;
+        using Mutex? residentMutex = residentMode
+            ? new Mutex(
+                initiallyOwned: false,
+                ResidentMutexName,
+                out residentMutexCreated)
+            : null;
+        if (!residentMutexCreated)
+        {
+            Console.Error.WriteLine("The resident voice bridge is already running.");
+            return 7;
         }
 
         Console.WriteLine(
@@ -196,6 +246,8 @@ internal static class Program
                 using var cancellation = new CancellationTokenSource();
                 EventWaitHandle? shutdownEvent = null;
                 RegisteredWaitHandle? shutdownRegistration = null;
+                Process? parentProcess = null;
+                Task? parentExitTask = null;
                 string? shutdownEventName = GetOption(args, "--shutdown-event");
                 if (shutdownEventName is not null)
                 {
@@ -218,6 +270,24 @@ internal static class Program
                 Console.CancelKeyPress += cancelHandler;
                 try
                 {
+                    if (parentProcessId is not null)
+                    {
+                        try
+                        {
+                            parentProcess = Process.GetProcessById(parentProcessId.Value);
+                        }
+                        catch (ArgumentException)
+                        {
+                            Console.Error.WriteLine(
+                                $"Tray parent process {parentProcessId.Value} is no longer running.");
+                            return 8;
+                        }
+
+                        parentExitTask = WatchParentExitAsync(parentProcess, cancellation);
+                        Console.WriteLine(
+                            $"Tray parent process monitor connected: pid={parentProcessId.Value}.");
+                    }
+
                     await using var batteryMonitor = new BatteryMonitor(servicesResult.Services);
                     await batteryMonitor.StartAsync(cancellation.Token);
                     return await AtvvVoiceCapture.RunResidentAsync(
@@ -229,6 +299,13 @@ internal static class Program
                 }
                 finally
                 {
+                    cancellation.Cancel();
+                    if (parentExitTask is not null)
+                    {
+                        await parentExitTask;
+                    }
+
+                    parentProcess?.Dispose();
                     Console.CancelKeyPress -= cancelHandler;
                     shutdownRegistration?.Unregister(waitObject: null);
                     shutdownEvent?.Dispose();
@@ -436,6 +513,29 @@ internal static class Program
         return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
+    private static async Task WatchParentExitAsync(
+        Process parentProcess,
+        CancellationTokenSource lifetime)
+    {
+        try
+        {
+            await parentProcess.WaitForExitAsync(lifetime.Token);
+            Console.WriteLine(
+                $"Tray parent process {parentProcess.Id} exited. Shutting down the resident bridge...");
+            lifetime.Cancel();
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // Normal tray-requested shutdown stops the parent watcher too.
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Tray parent monitor failed: {exception.GetType().Name}: {exception.Message}");
+            lifetime.Cancel();
+        }
+    }
+
     private static double ParseGainDb(string[] args)
     {
         string? value = GetOption(args, "--gain-db");
@@ -470,6 +570,7 @@ internal static class Program
         Console.WriteLine("  --resident             Run the resident voice bridge until Ctrl+C");
         Console.WriteLine("  --audio-status         Inspect CABLE Output and AirPods input/output routing");
         Console.WriteLine("  --shutdown-event <name>  Internal graceful-stop signal used by the tray app");
+        Console.WriteLine("  --parent-pid <pid>      Internal parent lifetime monitor used by the tray app");
         Console.WriteLine("  --shortcut-test        Toggle Typeless on after 5 sec, then off after another 5 sec");
         Console.WriteLine("  --codex-voice-shortcut-test  Send Ctrl+Alt+* once after 5 sec");
         Console.WriteLine(

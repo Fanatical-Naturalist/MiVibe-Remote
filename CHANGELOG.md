@@ -1,56 +1,31 @@
 # Changelog
 
-本项目仍处于硬件特定的预览阶段。版本号用于标识可回退基线；Preview 源码公开不等同于已经完成安装包和稳定版验收。
-
 ## 0.2.0-alpha.1 — 2026-09-02
 
-### 新增
+First public hardware preview.
 
-- 托盘语音桥意外退出后自动重连，退避间隔为 2、5、10、30 秒并封顶。
-- 自动重连等待期间可从托盘直接暂停；手动启动会清空退避计数。
-- 托盘宿主生命周期日志，自动保留最近 10 份，避免长期运行无限累积。
-- GATT 会话关闭与 ATVV 保活写入失败检测，使物理断线能够结束旧会话并进入托盘重连闭环。
-- 单实例保护；重复启动不会创建第二个托盘、按键钩子或蓝牙会话。
-- 极简状态窗口：展示连接、电量、按键提示，并提供重连、暂停、音频体检、开机启动和安全退出。
-- 用户主动重新连接时先等待旧语音桥完成安全清理；清理超时不启动第二个桥。
-- 标准 Battery Service 电量读取，支持 Notify 与 5 分钟低频轮询降级，并区分实时值、上次读取和未知。
-- 当前用户级开机自动启动开关，默认关闭，关闭时只删除与当前程序路径完全匹配的 MiVibe 启动值。
-- 深色/浅色状态窗口、真实比例遥控器插画、按键连线说明与 Typeless/Codex Voice 三步工作流。
-- 首次公开源码所需的 README、MIT 许可证与仓库卫生规则。
+### Added
 
-### 调整
+- Windows tray app with connection, battery, reconnect, pause, audio diagnostics, start-on-sign-in, and safe exit controls.
+- Typeless workflow on remote Power and Codex Voice workflow on remote Menu.
+- Home-to-Delete mapping and direction-ring navigation.
+- Automatic BLE/audio bridge restart after an unexpected disconnect.
+- Dark/light status window and remote key guide.
+- Self-contained Windows x64 Setup EXE, portable ZIP, and SHA-256 checksums.
 
-- 下一阶段开发版本与已冻结的 `v0.1.0-prototype` 明确分离。
-- 双击托盘从直接弹出音频诊断改为打开状态窗口；音频诊断仍保留为独立按钮。
-- 电量监视在后台初始化，不延迟已经验收的 Typeless/Codex Voice 语音桥启动。
-- Codex Voice 实体入口从 TV 迁移到菜单键；TV 保持原始输入。
-- Home 每次新按下发送一次扩展键 `Delete`，长按重复被抑制，不会连续删除。
+### Changed
 
-### 已知限制
+- Release logs now live in `%LOCALAPPDATA%\MiVibe Remote\logs`.
+- The tray launches the self-contained bridge executable directly; a separate .NET installation is no longer required.
 
-- 免驱常驻期间，电脑实体 `Menu/Application` 与 `Home` 也会分别触发 Voice 与一次扩展键 `Delete`；暂停或安全退出后恢复原键行为。
-- 返回（`<` 图标）与音量键在当前 Windows/固件组合下没有可用的用户态事件，0.2 暂不映射。
-- 当前只发布源码预览，尚无面向普通用户的一键安装包或自动依赖配置。
+### Known limitations
+
+- Verified with one Xiaomi remote (`VID 2717 / PID 32B8`) on Windows 11 x64 24H2.
+- VB-CABLE, Typeless/Codex shortcut setup, a system-wide key mapping, and one Windows restart are still required.
+- Physical keyboard `F5`, Power (`E0 5E`), `Menu/Application`, and `Home` have documented global conflicts while the corresponding mapping or hook is active.
+- Remote Back and Volume buttons are unavailable through the current user-mode path.
+- The preview installer is not code-signed.
 
 ## 0.1.0-prototype — 2026-08-21
 
-首个可日常使用的本地冻结版本。
-
-### 已实现
-
-- 小米蓝牙语音遥控器 BLE 发现与 ATVV 1.0 能力协商。
-- 16 kHz ADPCM 分段解码、`+12 dB` 限幅增益和 VB-CABLE 实时输出。
-- 开关键控制 Typeless，实体麦克风按住期间采音。
-- TV 键控制 Codex Voice；语音问答端到端通过。
-- AirPods 播放与遥控器输入并行工作，四个 Windows 音频角色可体检。
-- 无固定时限的 resident 核心，内存不会随音频时长线性增长。
-- 托盘启动、状态、暂停/恢复、音频体检与安全退出。
-- 命名停止信号确保 `MIC_CLOSE`、取消订阅和按键钩子恢复。
-
-### 已知限制
-
-- 托盘运行期间，电脑实体反引号键也会触发 Codex Voice。
-- 蓝牙断线后尚不能自动重连。
-- 尚无安装包、开机启动、正式图标和配置 UI。
-- 返回、音量加、音量减在当前 Windows/固件组合下没有可用的用户态事件。
-- 依赖用户单独安装 VB-CABLE，并把 `CABLE Output` 设为默认录音与默认通信录音设备。
+First locally frozen prototype of the BLE ATVV capture, VB-CABLE audio path, Typeless control, Codex Voice control, and tray host.
