@@ -72,6 +72,10 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "THIRD-PARTY-NOTICES.md") -Destin
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\\QUICK_START.md") -Destination $publishDirectory
 Copy-Item -LiteralPath $releaseNotes `
     -Destination (Join-Path $publishDirectory "RELEASE_NOTES.md")
+$validationNotes = Join-Path $projectRoot "docs\VALIDATION_$Version.md"
+if (Test-Path -LiteralPath $validationNotes) {
+    Copy-Item -LiteralPath $validationNotes -Destination $publishDirectory
+}
 Copy-Item -LiteralPath $KeyBridgeDirectory -Destination (Join-Path $publishDirectory 'KeyBridge') -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\assets') `
     -Destination (Join-Path $publishDirectory 'docs\assets') `

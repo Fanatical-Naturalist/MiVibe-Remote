@@ -35,7 +35,7 @@ internal sealed class RemoteGuideControl : Control
             "开关键用于 Typeless 开始或结束；" +
             "麦克风键需要按住采音；方向环对应方向键；确认键对应 Enter；" +
             "Home 键单击执行一次 Delete；菜单键启动 Typeless Translate；TV 键原样输入反引号；" +
-            "返回键执行一次 Delete；音量加减切换 Codex 相邻任务，需要启用增强按键。" +
+            "返回键执行一次 Backspace；音量加减切换 Codex 相邻任务，需要启用增强按键。" +
             "活动视图按当前已加载列表上下切换，到边界停止；请先关闭任务菜单。普通视图沿用默认任务快捷键。";
         MinimumSize = new Size(720, 320);
     }
@@ -49,9 +49,9 @@ internal sealed class RemoteGuideControl : Control
             "实拍遥控器与当前映射。开关键控制 Typeless，麦克风按住采音；" +
             "方向环移动，中心键 Enter；Home 执行一次 Delete；菜单启动 Typeless Translate；TV 保留原始输入。" +
             (phase == KeyBridgePhase.Active
-                ? "增强按键已启用：返回执行一次 Delete，音量加切换上一个任务，音量减切换下一个任务，仅在 Codex 位于前台时切换。" +
+                ? "增强按键已启用：返回执行一次 Backspace，音量加切换上一个任务，音量减切换下一个任务，仅在 Codex 位于前台时切换。" +
                   "活动视图按当前已加载列表上下切换，到边界停止；请先关闭任务菜单。普通视图沿用默认任务快捷键，无需新增绑定。"
-                : $"增强按键暂不可用：{GetEnhancedKeyDetail("返回 Delete / 音量切换任务")}");
+                : $"增强按键暂不可用：{GetEnhancedKeyDetail("返回 Backspace / 音量切换任务")}");
         Invalidate();
     }
 
@@ -361,7 +361,7 @@ internal sealed class RemoteGuideControl : Control
         WideGuideCallout[] callouts =
         [
             new("开关键", "轻触 · Typeless 开始 / 完成", "NUMPAD ÷", Anchor(0.367F, 0.103F), 16F, palette.WarmAccent, true, false),
-            new("返回键", GetEnhancedKeyDetail("单击删除 · 长按也只触发一次"), "DELETE", Anchor(0.372F, 0.372F), 124F, enhancedAccent, enhanced, false),
+            new("返回键", GetEnhancedKeyDetail("单击退格 · 长按也只触发一次"), "BACKSPACE", Anchor(0.372F, 0.372F), 124F, enhancedAccent, enhanced, false),
             new("Home 键", "单击 · 删除光标后的字符", "DELETE", Anchor(0.372F, 0.467F), 232F, palette.Accent, true, false),
             new("菜单键", "轻触 · 启动 Typeless Translate", "右 SHIFT + T", Anchor(0.372F, 0.563F), 340F, palette.Accent, true, false),
             new("麦克风键", "按住说话 · 松开结束", "HOLD TO TALK", Anchor(0.633F, 0.103F), 16F, palette.WarmAccent, true, true),
@@ -695,7 +695,7 @@ internal sealed class RemoteGuideControl : Control
             new("Home", "删除光标后的字符", "Delete", true, false),
             new("菜单", "Typeless Translate", "右 Shift + T", true, false),
             new("TV", "按键原样输入", "`", true, false),
-            new("返回", GetEnhancedKeyDetail("单次删除光标后的字符"), "Delete", keyBridgePhase == KeyBridgePhase.Active, false),
+            new("返回", GetEnhancedKeyDetail("单次删除光标前的字符"), "Backspace", keyBridgePhase == KeyBridgePhase.Active, false),
             new("音量", GetEnhancedKeyDetail("Codex 前台：相邻任务 · 活动视图按列表"), "切换任务", keyBridgePhase == KeyBridgePhase.Active, false)
         ];
 

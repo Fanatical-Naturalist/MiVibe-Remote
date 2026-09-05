@@ -2,7 +2,7 @@
 
 This preview is designed for Windows 11 x64 24H2+ and the tested Xiaomi Bluetooth Voice Remote 2 Pro. A Type-C port is not required on the PC; the remote communicates through Bluetooth Low Energy.
 
-These instructions describe the 0.3.0-alpha.2 hardware preview. Back/Delete, Menu/Translate, and adjacent-task navigation in Codex Activity view have passed hands-on testing. Other hardware and remaining lifecycle checks are still pending. A previously released 0.2 package does not contain the enhanced-key component.
+These instructions describe the 0.3.0-alpha.3 hardware preview. Back now sends Backspace; Home retains Delete. Menu/Translate and adjacent-task navigation in Codex Activity view retain their previously tested behavior. Other hardware and remaining lifecycle checks are still pending. A previously released 0.2 package does not contain the enhanced-key component.
 
 ## 1. Install the dependencies
 
@@ -25,7 +25,7 @@ In ordinary views, MiVibe sends the default Ctrl + PageUp/PageDown shortcut. If 
 
 ## 3. Install MiVibe
 
-1. Download `MiVibe-Remote-Setup-0.3.0-alpha.2-win-x64.exe` and its matching checksum file, or the complete portable ZIP, from [GitHub Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.2). Safely exit any running MiVibe version before upgrading; Setup keeps the existing installation directory.
+1. Download `MiVibe-Remote-Setup-0.3.0-alpha.3-win-x64.exe` and its matching checksum file, or the complete portable ZIP, from [GitHub Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.3). Safely exit any running MiVibe version before upgrading; Setup keeps the existing installation directory.
 2. Verify the SHA-256 checksum.
 3. Run Setup and approve the administrator prompt. MiVibe is installed for all users under Program Files. This preview is unsigned, so SmartScreen may require **More info → Run anyway**.
 4. Select **Apply the required remote key mapping** only after reading the warning. It needs administrator approval and a Windows restart.
@@ -43,7 +43,7 @@ For the portable package, extract the entire archive and keep its `KeyBridge` fo
 1. Double-click the MiVibe tray icon to open the control center.
 2. Under **增强按键**, select **启用增强按键**. Windows requests administrator permission for the enhanced-key component. Cancelling leaves these keys disabled; it does not prevent voice input.
 3. Wait for **等待按键**. Press and release **Back**, then **Volume +**, then **Volume −**, following the highlighted step. During calibration, these presses do not delete text or switch tasks.
-4. Wait for **已启用** before using the mappings. Back sends one Delete per press, including a long hold. Volume navigation takes effect only while Codex is the foreground application.
+4. Wait for **已启用** before using the mappings. Back sends one Backspace per press, including a long hold. Volume navigation takes effect only while Codex is the foreground application.
 5. To repeat identification, select **重新校准**. To end only the enhanced-key session, select **停用增强按键**.
 
 Enable enhanced keys manually each time MiVibe starts. **Start when I sign in** starts MiVibe, but does not automatically approve administrator permission or enable enhanced keys. If the driver host changes or reconnects, MiVibe tries to recover the connection and requires the three-key calibration again before sending actions.
@@ -56,7 +56,7 @@ The control center distinguishes disabled, starting, waiting for keys, active, r
 
 - Typeless: tap Power, hold Microphone while speaking, release it, then tap Power again when the session is complete.
 - Typeless Translate: tap Menu, hold Microphone while speaking, release it, then tap Power to complete input. The translation entry shortcut passed the individual live test; complete translation output still needs regression testing with the integrated package.
-- Home and Back both send a single Delete, removing the character after the caret. Back requires enhanced keys.
+- Home sends Delete, removing the character after the caret. Back sends Backspace, removing the character before the caret; enhanced keys are required. Both fire once per press, including a long hold.
 - Volume + / − navigates Codex tasks while Codex is foreground: activity view follows the current loaded list, and ordinary views keep default task navigation. Close task menus first. It does not intentionally change system volume.
 - TV keeps its original backtick input. MiVibe does not remap it in 0.3.
 - Double-click the tray icon to view battery, connection state, audio diagnostics, reconnect, pause, or safely exit.

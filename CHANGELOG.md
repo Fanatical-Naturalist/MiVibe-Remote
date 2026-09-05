@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0-alpha.3 — 2026-09-06 (hardware preview)
+
+- Back now sends Backspace before the caret; Home keeps Delete after the caret.
+- Both editing actions remain single-fire on a long hold. Menu Translate and Activity-view task navigation are retained.
+- Updated the control-center mapping labels and bilingual setup instructions.
+
 ## 0.3.0-alpha.2 — 2026-09-06 (hardware preview)
 
 - Pause and safe exit revoke key actions immediately while the observation helper cleans up.

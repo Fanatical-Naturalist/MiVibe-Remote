@@ -4,16 +4,16 @@ English | [简体中文](README.zh-CN.md)
 
 Turn a Xiaomi Bluetooth voice remote into a controller for voice input, Typeless Translate, and adjacent Codex tasks on Windows 11.
 
-> **0.3.0-alpha.2 hardware preview.** Back → Delete, Menu → Typeless Translate, and Volume → adjacent tasks in Codex Activity view have passed hands-on testing on the Xiaomi Bluetooth Voice Remote 2 Pro (`VID 2717 / PID 32B8 / REV 00A4`). The control center adds enhanced-key activation, calibration, and a refreshed light/dark interface. Compatibility with other remotes and the remaining lifecycle tests are not yet confirmed.
+> **0.3.0-alpha.3 hardware preview.** Back now sends **Backspace** to remove the character before the caret; Home keeps **Delete** for the character after it. Menu opens Typeless Translate, and Volume follows adjacent tasks in Codex Activity view. Tested hardware: Xiaomi Bluetooth Voice Remote 2 Pro (`VID 2717 / PID 32B8 / REV 00A4`). Compatibility with other remotes and remaining lifecycle tests are not yet confirmed.
 
-**[Download 0.3 for Windows x64](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.2)** · [What's new](docs/RELEASE_NOTES_0.3.0-alpha.2.md)
+**[Download 0.3 for Windows x64](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.3)** · [What's new](docs/RELEASE_NOTES_0.3.0-alpha.3.md)
 
 ## Features
 
 - Streams the remote microphone to Windows through VB-CABLE.
 - Toggles Typeless from the remote Power button.
 - Opens Typeless Translate from the remote Menu button.
-- Adds optional Back → Delete and Volume → previous/next Codex task controls. Activity-view navigation follows the loaded list order.
+- Adds optional Back → Backspace and Volume → previous/next Codex task controls. Activity-view navigation follows the loaded list order.
 - Shows device, battery, and enhanced-key connection state in a refreshed tray control center with light and dark themes.
 - Reconnects the voice bridge after an unexpected disconnect.
 - Supports optional start-on-sign-in and checks the Windows VB-CABLE input / AirPods output configuration. MiVibe does not switch audio devices automatically.
@@ -28,7 +28,7 @@ Turn a Xiaomi Bluetooth voice remote into a controller for voice input, Typeless
 
 ## Quick start
 
-1. Download the **0.3.0-alpha.2 Setup EXE** or complete portable package from [Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.2). When upgrading, safely exit MiVibe first. Setup keeps the existing installation directory and requests administrator approval. Older 0.2 packages do not include enhanced keys.
+1. Download the **0.3.0-alpha.3 Setup EXE** or complete portable package from [Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.3). When upgrading, safely exit MiVibe first. Setup keeps the existing installation directory and requests administrator approval. Older 0.2 packages do not include enhanced keys.
 2. Pair the remote in Windows Bluetooth settings and install VB-CABLE.
 3. Set **CABLE Output** as both the default recording device and the default communications recording device.
 4. Configure Typeless voice input as `Numpad Divide` and Typeless Translate as **Right Shift + T**. Volume navigation needs no new Codex shortcut: activity view follows the loaded task list; ordinary views keep the default `Ctrl + PageUp` / `Ctrl + PageDown` behavior.
@@ -50,7 +50,7 @@ See [Quick Start](docs/QUICK_START.md) for the exact setup and uninstall steps.
 | Direction ring / center | Navigation / Enter |
 | Home | Delete once, including on a long hold |
 | Menu | Open Typeless Translate with Right Shift + T |
-| Back | Delete once, including on a long hold; enhanced keys required |
+| Back | Backspace once, including on a long hold; enhanced keys required |
 | Volume + / − | Activity view: previous / next loaded task row in displayed order; ordinary views: default task navigation. Requires enhanced keys and Codex in foreground |
 | TV | Preserved original backtick input; no MiVibe action |
 
@@ -72,7 +72,7 @@ See [Quick Start](docs/QUICK_START.md) for the exact setup and uninstall steps.
 dotnet build src/MiVibe.Remote.Tray/MiVibe.Remote.Tray.csproj --configuration Release
 ```
 
-Release packaging requires .NET SDK `9.0.317` and Inno Setup. Run `tools/Build-KeyBridge.ps1` to package the enhanced-key helper before running `tools/Publish-Release.ps1`. Contributor notes are in [Development](docs/DEVELOPMENT_PLAN.md); the current scope and acceptance boundary are in [0.3 release notes](docs/RELEASE_NOTES_0.3.0-alpha.2.md). Historical protocol experiments remain in `docs/` for reference.
+Release packaging requires .NET SDK `9.0.317` and Inno Setup. Run `tools/Build-KeyBridge.ps1` to package the enhanced-key helper before running `tools/Publish-Release.ps1`. Contributor notes are in [Development](docs/DEVELOPMENT_PLAN.md); the current scope and acceptance boundary are in [0.3 release notes](docs/RELEASE_NOTES_0.3.0-alpha.3.md). Historical protocol experiments remain in `docs/` for reference.
 
 ## License
 

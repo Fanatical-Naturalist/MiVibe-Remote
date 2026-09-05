@@ -18,6 +18,7 @@ internal static class TypelessShortcut
     private const ushort ScanLeftShift = 0x2A;
     private const ushort ScanDigit8 = 0x09;
     private const ushort ScanDelete = 0x53;
+    private const ushort ScanBackspace = 0x0E;
     private const ushort ScanT = 0x14;
     private const ushort ScanPageUp = 0x49;
     private const ushort ScanPageDown = 0x51;
@@ -264,6 +265,17 @@ internal static class TypelessShortcut
             CreateScanCodeInput(ScanDelete, KeyEventExtendedKey | KeyEventKeyUp)
         ];
 
+        Send(inputs, cleanupInputs);
+    }
+
+    public static void SendBackspace()
+    {
+        Input[] inputs =
+        [
+            CreateScanCodeInput(ScanBackspace, 0),
+            CreateScanCodeInput(ScanBackspace, KeyEventKeyUp)
+        ];
+        Input[] cleanupInputs = [CreateScanCodeInput(ScanBackspace, KeyEventKeyUp)];
         Send(inputs, cleanupInputs);
     }
 

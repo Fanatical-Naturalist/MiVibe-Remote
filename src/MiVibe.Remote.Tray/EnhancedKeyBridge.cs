@@ -392,7 +392,7 @@ internal sealed class EnhancedKeyBridge : IDisposable
                     throw new IOException("Active status without completed calibration.");
                 }
                 session.Active = true;
-                Publish(KeyBridgePhase.Active, "返回键删除；音量键按活动列表上下切换任务。");
+                Publish(KeyBridgePhase.Active, "返回键退格；音量键按活动列表上下切换任务。");
                 return;
             }
 

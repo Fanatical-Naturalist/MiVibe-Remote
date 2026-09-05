@@ -139,7 +139,7 @@ internal sealed class StatusWindow : Form
         keyBridgeSummaryLabel.TextAlign = ContentAlignment.MiddleCenter;
         keyBridgeSummaryLabel.AutoEllipsis = true;
         keyBridgeSummaryLabel.Tag = "status-secondary";
-        keyBridgeDetailLabel = CreateLabel("启用后，返回键删除字符，音量键切换任务。");
+        keyBridgeDetailLabel = CreateLabel("启用后，返回键删除光标前的字符，音量键切换任务。");
         keyBridgeDetailLabel.Dock = DockStyle.Fill;
         keyBridgeDetailLabel.Font = CreateUiFont(9.25F, FontStyle.Regular);
         keyBridgeDetailLabel.TextAlign = ContentAlignment.MiddleLeft;
@@ -991,11 +991,11 @@ internal sealed class StatusWindow : Form
         {
             KeyBridgePhase.Starting => "正在准备增强按键，请留意 Windows 权限提示。",
             KeyBridgePhase.Calibrating => "按提示依次短按并松开三个键，完成校准。",
-            KeyBridgePhase.Active => "返回 → Delete · 音量＋ / − → 上 / 下一个任务",
+            KeyBridgePhase.Active => "返回 → Backspace · 音量＋ / − → 上 / 下一个任务",
             KeyBridgePhase.Reconnecting => "按键连接中断，正在尝试恢复。",
             KeyBridgePhase.Error => "增强按键暂不可用，请重试或重新校准。",
             KeyBridgePhase.Stopping => "正在安全停用增强按键…",
-            _ => "启用后，返回键删除字符，音量键切换任务。"
+            _ => "启用后，返回键删除光标前的字符，音量键切换任务。"
         };
         keyBridgeBadge.Text = phase;
         keyBridgeBadge.AccessibleName = $"增强按键状态：{phase}";

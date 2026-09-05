@@ -4,16 +4,16 @@
 
 把小米蓝牙语音遥控器变成 Windows 11 上用于语音输入、Typeless Translate 和 Codex 任务切换的实体控制器。
 
-> **0.3.0-alpha.2 硬件预览版。** 返回键 Delete、菜单键 Typeless Translate，以及音量键按 Codex 活动视图顺序切换相邻任务，均已通过用户实测。控制中心新增增强按键启用、三步校准和明暗主题界面。当前仅在小米蓝牙语音遥控器 2 Pro（`VID 2717 / PID 32B8 / REV 00A4`）上验证，其他遥控器及其余生命周期测试尚未完成。
+> **0.3.0-alpha.3 硬件预览版。** 返回键改为 **Backspace**，删除光标前的字符；Home 保留 **Delete**，删除光标后的字符。菜单打开 Typeless Translate，音量键按 Codex 活动视图顺序切换任务。控制中心提供增强按键启用、三步校准和明暗主题界面。当前仅在小米蓝牙语音遥控器 2 Pro（`VID 2717 / PID 32B8 / REV 00A4`）上验证，其他遥控器及其余生命周期测试尚未完成。
 
-**[下载 Windows x64 版 0.3](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.2)** · [本次更新](docs/RELEASE_NOTES_0.3.0-alpha.2.md)
+**[下载 Windows x64 版 0.3](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.3)** · [本次更新](docs/RELEASE_NOTES_0.3.0-alpha.3.md)
 
 ## 功能
 
 - 通过 VB-CABLE 将遥控器麦克风音频送入 Windows。
 - 用遥控器开关键开始或结束 Typeless 输入。
 - 用菜单键打开 Typeless Translate。
-- 启用增强按键后，返回键执行单次 Delete；音量键切换 Codex 相邻任务，活动视图按当前已加载列表的顺序切换。
+- 启用增强按键后，返回键执行单次 Backspace；音量键切换 Codex 相邻任务，活动视图按当前已加载列表的顺序切换。
 - 在更新后的明暗主题控制中心查看连接、电量、增强按键状态与三步校准。
 - 语音桥意外断开后自动尝试重连。
 - 可选择登录后自动启动，并检查 VB-CABLE 默认输入与当前 Windows 输出；可以识别 AirPods 配置，但 AirPods 不是必需设备。MiVibe 不会自动切换系统音频设备。
@@ -28,7 +28,7 @@
 
 ## 快速开始
 
-1. 从 [0.3 Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.2) 下载 **Setup EXE** 或完整便携包。升级前先“安全退出” MiVibe，安装程序会沿用原安装目录并请求管理员权限。旧版 0.2 包不含增强组件；已配置原有按键映射的电脑无需重复修改。
+1. 从 [0.3 Releases](https://github.com/Fanatical-Naturalist/MiVibe-Remote/releases/tag/v0.3.0-alpha.3) 下载 **Setup EXE** 或完整便携包。升级前先“安全退出” MiVibe，安装程序会沿用原安装目录并请求管理员权限。旧版 0.2 包不含增强组件；已配置原有按键映射的电脑无需重复修改。
 2. 在 Windows 蓝牙设置中配对遥控器，然后安装 VB-CABLE。
 3. 将 **CABLE Output** 同时设为“默认录音设备”和“默认通信录音设备”。
 4. 重启 Windows。如使用 Typeless，请在“设置 → 键盘快捷键 → 语音输入”中添加 `Numpad Divide`；映射生效后可直接轻触遥控器开关键录入，不要求电脑配有实体数字小键盘。
@@ -49,7 +49,7 @@
 | Home | 删除光标后的一个字符 |
 | 菜单键 | 打开 Typeless Translate |
 | TV | 保留原始输入，MiVibe 不处理 |
-| 返回 | 每次按下执行一次 Delete，长按只执行一次；需启用增强按键 |
+| 返回 | 每次按下执行一次 Backspace，长按只执行一次；需启用增强按键 |
 | 音量＋ / − | 活动视图按已加载列表切换上一行 / 下一行任务；普通视图沿用默认任务导航。需启用增强按键且 Codex 在前台 |
 
 ## 重要限制
@@ -69,7 +69,7 @@
 2. 打开“Windows 设置 → 应用 → 已安装的应用”，卸载 **MiVibe Remote**，并批准管理员权限。
 3. 如果卸载程序提示重启，请重启 Windows，使实体键盘映射恢复生效。VB-CABLE、Typeless、Codex 和蓝牙配对不会被删除。
 
-更完整的安装与卸载说明见英文版 [Quick Start](docs/QUICK_START.md)，当前变更和验收边界见 [0.3 发布说明](docs/RELEASE_NOTES_0.3.0-alpha.2.md)。
+更完整的安装与卸载说明见英文版 [Quick Start](docs/QUICK_START.md)，当前变更和验收边界见 [0.3 发布说明](docs/RELEASE_NOTES_0.3.0-alpha.3.md)。
 
 ## 从源码构建
 

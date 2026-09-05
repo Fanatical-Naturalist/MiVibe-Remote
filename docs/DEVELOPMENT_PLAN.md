@@ -7,7 +7,7 @@ MiVibe Remote is a Windows 11 WinForms tray application with a separate BLE/audi
 - `MiVibe.Remote.Tray` owns the tray icon, status window, battery display, startup preference, and reconnect policy.
 - `MiVibe.Remote.GattProbe` connects to the paired BLE remote, negotiates ATVV 1.x, decodes microphone audio, and renders PCM to VB-CABLE.
 - The release keeps the bridge as a separate process so it can be stopped safely and restarted after a disconnect.
-- `MiVibe.Remote.KeyBridge` observes the tested RC003 synchronous raw HID path. It identifies a report stream through Back / Volume + / Volume − press-and-release calibration and sends only allowlisted action events to the tray. The tray sends Delete or foreground-gated Codex navigation.
+- `MiVibe.Remote.KeyBridge` observes the tested RC003 synchronous raw HID path. It identifies a report stream through Back / Volume + / Volume − press-and-release calibration and sends only allowlisted action events to the tray. The tray sends Backspace/Delete or foreground-gated Codex navigation.
 - The key helper has a separate connection lifecycle and must be enabled manually after each tray launch. Driver-host reconnect resets calibration; failed calibration does not enable key actions. TV stays on its original Windows input path.
 - Pause stops voice, enhanced keys, and the tray-owned Home/Menu mappings. Resume through **连接遥控器**, then manually enable enhanced keys and calibrate again. Voice disconnect/reconnect alone does not release the tray-owned Home/Menu mappings.
 
@@ -30,7 +30,7 @@ Build the enhanced-key helper first. The packaging script requires that output, 
 .\tools\Publish-Release.ps1
 ```
 
-The current hardware preview is 0.3.0-alpha.2. Packaging produces local artifacts; publishing the matching tag and GitHub pre-release is a separate step.
+The current hardware preview is 0.3.0-alpha.3. Packaging produces local artifacts; publishing the matching tag and GitHub pre-release is a separate step.
 
 The installer compiler is intentionally not committed. Install the current Inno Setup locally or pass its `ISCC.exe` path to the script.
 
@@ -38,7 +38,7 @@ The 0.3 package includes `KeyBridge/MiVibe.Remote.KeyBridge.exe` and its accompa
 
 ## 0.3 integration and acceptance
 
-The implementation adds Back → single Delete, Menu → Typeless Translate (Right Shift + T), and Volume → adjacent Codex conversations. Home remains single Delete, and TV remains original backtick input. Native Home/Menu interception and the pre-existing system-wide scancode map retain their documented scope.
+The implementation adds Back → single Backspace, Menu → Typeless Translate (Right Shift + T), and Volume → adjacent Codex conversations. Home remains single Delete, and TV remains original backtick input. Native Home/Menu interception and the pre-existing system-wide scancode map retain their documented scope.
 
 The revised WinForms control center retains the user-owned remote illustration and supports dark/light themes, DPI scaling, and high contrast. It displays key lifecycle state separately from microphone connectivity and guides the three calibration steps. It never fills in an invented battery value or reports enhanced keys active before the helper reaches that state.
 
@@ -48,7 +48,7 @@ Validation status at this documentation update:
 - The UI and its state contract compiled with 0 warnings and 0 errors.
 - The alpha.2 main application has also passed user tests for Activity-view adjacent-task navigation, Back/Delete, and Menu/Translate. Its safe exit and handover from alpha.1 were exercised. See the validation record for current installation results and remaining lifecycle checks.
 
-See [0.3 release notes](RELEASE_NOTES_0.3.0-alpha.2.md) and [live diagnostic evidence](HID_DIAGNOSTIC_2026-09-05.md).
+See [0.3 release notes](RELEASE_NOTES_0.3.0-alpha.3.md) and [live diagnostic evidence](HID_DIAGNOSTIC_2026-09-05.md).
 
 ## Preview release checks
 

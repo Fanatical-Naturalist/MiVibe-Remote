@@ -90,7 +90,7 @@ public sealed class RemoteKeyActions : IDisposable
     {
         ShortcutAction? action = key switch
         {
-            "back" => ShortcutAction.BackDelete,
+            "back" => ShortcutAction.Backspace,
             "volume_up" => ShortcutAction.PreviousTask,
             "volume_down" => ShortcutAction.NextTask,
             _ => null
@@ -249,7 +249,7 @@ public sealed class RemoteKeyActions : IDisposable
                 ShortcutAction action = queued.Action;
                 // Serialize Delete after Translate releases Shift, so a quick Home
                 // press during the 80 ms shortcut cannot accidentally send Shift+Delete.
-                if (action is ShortcutAction.Delete or ShortcutAction.BackDelete)
+                if (action is ShortcutAction.Delete or ShortcutAction.Backspace)
                 {
                     if (TypelessShortcut.AnyModifierIsDown())
                     {
@@ -257,9 +257,16 @@ public sealed class RemoteKeyActions : IDisposable
                         continue;
                     }
 
-                    TypelessShortcut.SendDelete();
+                    if (action == ShortcutAction.Backspace)
+                    {
+                        TypelessShortcut.SendBackspace();
+                    }
+                    else
+                    {
+                        TypelessShortcut.SendDelete();
+                    }
                     Interlocked.Increment(ref deleteCount);
-                    Observe(action == ShortcutAction.BackDelete ? "返回·Delete" : "Home·Delete");
+                    Observe(action == ShortcutAction.Backspace ? "返回·Backspace" : "Home·Delete");
                     continue;
                 }
 
@@ -437,7 +444,7 @@ public sealed class RemoteKeyActions : IDisposable
     {
         Translate,
         Delete,
-        BackDelete,
+        Backspace,
         PreviousTask,
         NextTask
     }
