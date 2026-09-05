@@ -12,6 +12,7 @@ internal sealed class RemoteGuideControl : Control
     private const float DesignHeight = 460F;
     private readonly Image? productImage;
     private bool darkMode;
+    private KeyBridgePhase keyBridgePhase;
 
     public RemoteGuideControl()
     {
@@ -33,12 +34,37 @@ internal sealed class RemoteGuideControl : Control
             "左侧显示依据用户自有实拍图校准的遥控器示意图，右侧列出当前按键映射。" +
             "开关键用于 Typeless 开始或结束；" +
             "麦克风键需要按住采音；方向环对应方向键；确认键对应 Enter；" +
-            "Home 键单击执行一次 Delete；菜单键控制 Codex Voice；TV 键原样输入反引号；" +
-            "返回键和音量摇杆当前不可用。";
+            "Home 键单击执行一次 Delete；菜单键启动 Typeless Translate；TV 键原样输入反引号；" +
+            "返回键执行一次 Delete；音量加减切换 Codex 相邻任务，需要启用增强按键。" +
+            "活动视图按当前已加载列表上下切换，到边界停止；请先关闭任务菜单。普通视图沿用默认任务快捷键。";
         MinimumSize = new Size(720, 320);
     }
 
     protected override Size DefaultSize => new(1080, 300);
+
+    public void ApplyKeyBridgeState(KeyBridgePhase phase)
+    {
+        keyBridgePhase = phase;
+        AccessibleDescription =
+            "实拍遥控器与当前映射。开关键控制 Typeless，麦克风按住采音；" +
+            "方向环移动，中心键 Enter；Home 执行一次 Delete；菜单启动 Typeless Translate；TV 保留原始输入。" +
+            (phase == KeyBridgePhase.Active
+                ? "增强按键已启用：返回执行一次 Delete，音量加切换上一个任务，音量减切换下一个任务，仅在 Codex 位于前台时切换。" +
+                  "活动视图按当前已加载列表上下切换，到边界停止；请先关闭任务菜单。普通视图沿用默认任务快捷键，无需新增绑定。"
+                : $"增强按键暂不可用：{GetEnhancedKeyDetail("返回 Delete / 音量切换任务")}");
+        Invalidate();
+    }
+
+    private string GetEnhancedKeyDetail(string activeDetail) => keyBridgePhase switch
+    {
+        KeyBridgePhase.Active => activeDetail,
+        KeyBridgePhase.Starting => "正在启动增强按键…",
+        KeyBridgePhase.Calibrating => "按下方提示完成三键校准",
+        KeyBridgePhase.Reconnecting => "连接恢复后可用",
+        KeyBridgePhase.Error => "暂不可用 · 请在下方重新启用",
+        KeyBridgePhase.Stopping => "正在停用增强按键…",
+        _ => "启用增强按键后可用"
+    };
 
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(
@@ -292,7 +318,7 @@ internal sealed class RemoteGuideControl : Control
             height);
     }
 
-    private static void DrawWideGuide(
+    private void DrawWideGuide(
         Graphics graphics,
         GuidePalette palette,
         Image image,
@@ -330,16 +356,18 @@ internal sealed class RemoteGuideControl : Control
             imageBounds.X + (imageBounds.Width * x),
             imageBounds.Y + (imageBounds.Height * y));
 
+        bool enhanced = keyBridgePhase == KeyBridgePhase.Active;
+        Color enhancedAccent = enhanced ? palette.Accent : palette.Unavailable;
         WideGuideCallout[] callouts =
         [
             new("开关键", "轻触 · Typeless 开始 / 完成", "NUMPAD ÷", Anchor(0.367F, 0.103F), 16F, palette.WarmAccent, true, false),
-            new("返回键", "当前固件没有 Windows 事件", "暂不可用", Anchor(0.372F, 0.372F), 124F, palette.Unavailable, false, false),
+            new("返回键", GetEnhancedKeyDetail("单击删除 · 长按也只触发一次"), "DELETE", Anchor(0.372F, 0.372F), 124F, enhancedAccent, enhanced, false),
             new("Home 键", "单击 · 删除光标后的字符", "DELETE", Anchor(0.372F, 0.467F), 232F, palette.Accent, true, false),
-            new("菜单键", "轻触 · 打开 / 关闭 Codex Voice", "CTRL + ALT + *", Anchor(0.372F, 0.563F), 340F, palette.Accent, true, false),
+            new("菜单键", "轻触 · 启动 Typeless Translate", "右 SHIFT + T", Anchor(0.372F, 0.563F), 340F, palette.Accent, true, false),
             new("麦克风键", "按住说话 · 松开结束", "HOLD TO TALK", Anchor(0.633F, 0.103F), 16F, palette.WarmAccent, true, true),
             new("方向环 / 中心确认", "方向键移动 · Enter 确认", "NAV / ENTER", Anchor(0.500F, 0.255F), 124F, palette.Accent, true, true),
-            new("音量 + / −", "当前固件没有 Windows 事件", "暂不可用", Anchor(0.633F, 0.419F), 232F, palette.Unavailable, false, true),
-            new("TV 键", "保留原始输入 · 0.3 翻译候选", "0.3 CANDIDATE", Anchor(0.633F, 0.563F), 340F, palette.WarmAccent, true, true)
+            new("音量 + / −", GetEnhancedKeyDetail("＋ 上一个 / − 下一个任务 · 活动视图按列表"), "切换任务", Anchor(0.633F, 0.419F), 232F, enhancedAccent, enhanced, true),
+            new("TV 键", "保留原始反引号输入", "ORIGINAL INPUT", Anchor(0.633F, 0.563F), 340F, palette.WarmAccent, true, true)
         ];
 
         foreach (WideGuideCallout callout in callouts)
@@ -626,7 +654,7 @@ internal sealed class RemoteGuideControl : Control
             centeredFormat);
     }
 
-    private static void DrawMappingPanel(
+    private void DrawMappingPanel(
         Graphics graphics,
         GuidePalette palette,
         Font panelTitleFont,
@@ -651,7 +679,7 @@ internal sealed class RemoteGuideControl : Control
             new RectangleF(542F, 37F, 330F, 34F),
             StringFormat.GenericTypographic);
         graphics.DrawString(
-            "实际生效的 0.2 配置 · 2 项系统级映射",
+            "0.3 按键配置 · 增强按键需单独启用",
             metaFont,
             metaBrush,
             new RectangleF(542F, 69F, 500F, 24F),
@@ -665,10 +693,10 @@ internal sealed class RemoteGuideControl : Control
             new("麦克风", "遥控器麦克风采音", "按住", true, true),
             new("方向 / 确认", "方向键 · Enter", "导航", true, false),
             new("Home", "删除光标后的字符", "Delete", true, false),
-            new("菜单", "Codex Voice", "Ctrl + Alt + *", true, false),
+            new("菜单", "Typeless Translate", "右 Shift + T", true, false),
             new("TV", "按键原样输入", "`", true, false),
-            new("返回", "Windows 暂无按键事件", "不可用", false, false),
-            new("音量", "Windows 暂无按键事件", "不可用", false, false)
+            new("返回", GetEnhancedKeyDetail("单次删除光标后的字符"), "Delete", keyBridgePhase == KeyBridgePhase.Active, false),
+            new("音量", GetEnhancedKeyDetail("Codex 前台：相邻任务 · 活动视图按列表"), "切换任务", keyBridgePhase == KeyBridgePhase.Active, false)
         ];
 
         const float firstRowTop = 96F;
@@ -689,7 +717,7 @@ internal sealed class RemoteGuideControl : Control
         }
     }
 
-    private static void DrawAvailabilitySummary(
+    private void DrawAvailabilitySummary(
         Graphics graphics,
         GuidePalette palette,
         Font font,
@@ -716,7 +744,7 @@ internal sealed class RemoteGuideControl : Control
             LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisCharacter
         };
-        graphics.DrawString("6 组可用", font, textBrush, bounds, textFormat);
+        graphics.DrawString(keyBridgePhase == KeyBridgePhase.Active ? "增强已启用" : "增强未就绪", font, textBrush, bounds, textFormat);
     }
 
     private static void DrawMappingRow(

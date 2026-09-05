@@ -19,6 +19,17 @@ internal enum BatteryFreshness
     LastKnown
 }
 
+internal enum KeyBridgePhase
+{
+    Disabled,
+    Starting,
+    Calibrating,
+    Active,
+    Reconnecting,
+    Error,
+    Stopping
+}
+
 internal sealed record TrayUiState(
     string DeviceName,
     ConnectionPhase Connection,
@@ -28,7 +39,12 @@ internal sealed record TrayUiState(
     BatteryFreshness BatteryFreshness,
     DateTimeOffset? BatteryUpdatedAt,
     bool StartWithWindows,
-    bool OperationInProgress)
+    bool OperationInProgress,
+    KeyBridgePhase KeyBridge = KeyBridgePhase.Disabled,
+    string KeyBridgeDetail = "",
+    int CalibrationStep = 0,
+    string? LastKeyAction = null,
+    bool KeyBridgeRunning = false)
 {
     public static TrayUiState Initial { get; } = new(
         "小米蓝牙语音遥控器",

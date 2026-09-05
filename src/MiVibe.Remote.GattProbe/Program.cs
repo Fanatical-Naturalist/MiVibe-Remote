@@ -84,6 +84,11 @@ internal static class Program
 
         int? menuVoiceTestSeconds = ParseDurationOption(
             args,
+            "--menu-translate-test",
+            20,
+            5,
+            60) ?? ParseDurationOption(
+            args,
             "--menu-voice-test",
             20,
             5,
@@ -91,8 +96,8 @@ internal static class Program
         if (menuVoiceTestSeconds is not null)
         {
             Console.WriteLine(
-                $"Temporary Menu Voice test active for {menuVoiceTestSeconds} seconds. " +
-                "Press the remote Menu key once, or press Home for one Delete. " +
+                $"Temporary Menu Translate test active for {menuVoiceTestSeconds} seconds. " +
+                "Press Menu to send RightShift+T, or press Home for one Delete. " +
                 "The computer backtick remains available; computer Home is reserved during the test.");
             using var menuVoiceHook = new MenuVoiceShortcutHook();
             await Task.Delay(TimeSpan.FromSeconds(menuVoiceTestSeconds.Value));
@@ -130,11 +135,23 @@ internal static class Program
             900);
         int? menuCodexVoiceLiveSeconds = ParseDurationOption(
             args,
+            "--menu-translate-live",
+            DefaultVoiceCaptureSeconds,
+            1,
+            900) ?? ParseDurationOption(
+            args,
             "--menu-codex-voice-live",
             DefaultVoiceCaptureSeconds,
             1,
             900);
         bool residentMode = args.Contains("--resident", StringComparer.OrdinalIgnoreCase);
+        bool externalKeyController = args.Contains("--external-key-controller", StringComparer.OrdinalIgnoreCase);
+        if (externalKeyController && !residentMode)
+        {
+            Console.Error.WriteLine("--external-key-controller is valid only with --resident.");
+            return 2;
+        }
+
         string? parentProcessIdValue = GetOption(args, "--parent-pid");
         int? parentProcessId = null;
         if (parentProcessIdValue is not null)
@@ -168,7 +185,7 @@ internal static class Program
         {
             Console.Error.WriteLine(
                 "Choose only one of --listen, --voice-capture, --voice-live, " +
-                "--typeless-live, --codex-voice-live, --menu-codex-voice-live, or --resident.");
+                "--typeless-live, --codex-voice-live, --menu-translate-live, or --resident.");
             return 2;
         }
 
@@ -295,7 +312,8 @@ internal static class Program
                         servicesResult.Services,
                         gainDb,
                         renderDeviceName!,
-                        cancellation.Token);
+                        cancellation.Token,
+                        externalKeyController);
                 }
                 finally
                 {
@@ -566,15 +584,17 @@ internal static class Program
         Console.WriteLine("  --voice-live [sec]     Capture and stream decoded PCM to VB-CABLE in real time");
         Console.WriteLine("  --typeless-live [sec]  Voice live plus automatic Typeless push-to-talk shortcut");
         Console.WriteLine("  --codex-voice-live [sec]  Voice live plus opening Codex Voice after bridge warm-up");
-        Console.WriteLine("  --menu-codex-voice-live [sec]  Voice live plus Menu-key control of Codex Voice");
+        Console.WriteLine("  --menu-translate-live [sec]  Voice live plus Menu-key Typeless Translate (RightShift+T)");
         Console.WriteLine("  --resident             Run the resident voice bridge until Ctrl+C");
+        Console.WriteLine("  --external-key-controller  With --resident, leave Menu/Home actions to the tray host");
         Console.WriteLine("  --audio-status         Inspect CABLE Output and AirPods input/output routing");
         Console.WriteLine("  --shutdown-event <name>  Internal graceful-stop signal used by the tray app");
         Console.WriteLine("  --parent-pid <pid>      Internal parent lifetime monitor used by the tray app");
         Console.WriteLine("  --shortcut-test        Toggle Typeless on after 5 sec, then off after another 5 sec");
         Console.WriteLine("  --codex-voice-shortcut-test  Send Ctrl+Alt+* once after 5 sec");
         Console.WriteLine(
-            "  --menu-voice-test [sec]  Temporarily map Menu to Voice and Home to Delete");
+            "  --menu-translate-test [sec]  Temporarily map Menu to Translate and Home to Delete");
+        Console.WriteLine("  Legacy --menu-voice-test / --menu-codex-voice-live names remain aliases for Translate modes.");
         Console.WriteLine("  --out <wav path>       WAV output path for --voice-capture");
         Console.WriteLine("  --render-device <name> Playback endpoint for --voice-live (default: CABLE Input)");
         Console.WriteLine("  --gain-db <value>      PCM gain from -12 to +24 dB (default: +12 dB)");
@@ -585,7 +605,7 @@ internal static class Program
         Console.WriteLine("Voice capture explicitly writes only documented ATVV GET_CAPS/MIC_OPEN/MIC_CLOSE commands.");
         Console.WriteLine("Voice live uses the same commands and also writes decoded PCM to an existing playback endpoint.");
         Console.WriteLine("Typeless live temporarily suppresses physical F5 and injects RightCtrl+RightShift on HTT start/stop.");
-        Console.WriteLine("Menu Codex Voice live reserves the physical Menu key while running; backtick stays available.");
+        Console.WriteLine("Menu Translate live reserves the physical Menu key while running; backtick stays available.");
     }
 }
 

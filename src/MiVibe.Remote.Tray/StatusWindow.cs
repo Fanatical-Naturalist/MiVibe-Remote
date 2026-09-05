@@ -45,11 +45,20 @@ internal sealed class StatusWindow : Form
     private readonly TableLayoutPanel rootLayout;
     private readonly SurfacePanel statusCard;
     private readonly SurfacePanel controlsCard;
+    private readonly SurfacePanel enhancedKeysCard;
     private readonly List<SurfacePanel> workflowCards = [];
     private readonly RemoteGuideControl remoteGuide;
     private readonly Label titleLabel;
     private readonly Label introLabel;
     private readonly PillBadge statusBadge;
+    private readonly PillBadge versionBadge;
+    private readonly PillBadge keyBridgeBadge;
+    private readonly Label keyBridgeDetailLabel;
+    private readonly Label keyBridgeHintLabel;
+    private readonly Label keyBridgeSummaryLabel;
+    private readonly PillBadge[] calibrationSteps;
+    private readonly Button enhancedKeysButton;
+    private readonly Button calibrateKeysButton;
     private readonly Button themeToggleButton;
     private readonly Label deviceNameLabel;
     private readonly Label detailLabel;
@@ -68,15 +77,15 @@ internal sealed class StatusWindow : Form
 
     public StatusWindow()
     {
-        Text = "MiVibe Remote";
+        Text = "MiVibe Remote · 0.3";
         AccessibleName = "MiVibe Remote 控制中心";
         AccessibleDescription = "查看小米遥控器连接、电量、按键映射和语音输入工作流。";
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScroll = true;
         BackColor = darkMode ? DarkCanvasColor : CanvasColor;
-        ClientSize = new Size(1460, 1080);
-        MinimumSize = new Size(1200, 900);
+        ClientSize = new Size(1380, 1000);
+        MinimumSize = new Size(1160, 820);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -86,14 +95,14 @@ internal sealed class StatusWindow : Form
         Font = CreateUiFont(9.5F, FontStyle.Regular);
 
         titleLabel = CreateLabel("MiVibe Remote");
-        titleLabel.Font = CreateDisplayFont(27F, FontStyle.Bold);
+        titleLabel.Font = CreateDisplayFont(22F, FontStyle.Bold);
         titleLabel.Dock = DockStyle.Fill;
         titleLabel.TextAlign = ContentAlignment.MiddleLeft;
         titleLabel.AutoEllipsis = false;
         titleLabel.AccessibleRole = AccessibleRole.StaticText;
 
-        introLabel = CreateLabel("把小米遥控器变成你的 Vibe Coding 语音入口");
-        introLabel.Font = CreateUiFont(10.75F, FontStyle.Regular);
+        introLabel = CreateLabel("语音输入、翻译与任务切换，都在手边。");
+        introLabel.Font = CreateUiFont(10F, FontStyle.Regular);
         introLabel.Dock = DockStyle.Fill;
         introLabel.TextAlign = ContentAlignment.MiddleLeft;
         introLabel.AutoEllipsis = true;
@@ -107,6 +116,45 @@ internal sealed class StatusWindow : Form
             Size = new Size(118, 34),
             Text = "正在启动"
         };
+
+        versionBadge = new PillBadge
+        {
+            Anchor = AnchorStyles.Left,
+            Size = new Size(58, 27),
+            Margin = new Padding(12, 0, 0, 0),
+            Text = "0.3",
+            AccessibleName = "版本 0.3"
+        };
+        keyBridgeBadge = new PillBadge
+        {
+            Anchor = AnchorStyles.Right,
+            Size = new Size(104, 28),
+            Margin = Padding.Empty,
+            Text = "未启用",
+            AccessibleName = "增强按键状态：未启用"
+        };
+        keyBridgeSummaryLabel = CreateLabel("增强按键 · 未启用");
+        keyBridgeSummaryLabel.Dock = DockStyle.Fill;
+        keyBridgeSummaryLabel.Font = CreateUiFont(9F, FontStyle.Regular);
+        keyBridgeSummaryLabel.TextAlign = ContentAlignment.MiddleCenter;
+        keyBridgeSummaryLabel.AutoEllipsis = true;
+        keyBridgeSummaryLabel.Tag = "status-secondary";
+        keyBridgeDetailLabel = CreateLabel("启用后，返回键删除字符，音量键切换任务。");
+        keyBridgeDetailLabel.Dock = DockStyle.Fill;
+        keyBridgeDetailLabel.Font = CreateUiFont(9.25F, FontStyle.Regular);
+        keyBridgeDetailLabel.TextAlign = ContentAlignment.MiddleLeft;
+        keyBridgeDetailLabel.AutoEllipsis = true;
+        keyBridgeHintLabel = CreateLabel("启用时 Windows 会请求管理员权限。");
+        keyBridgeHintLabel.Dock = DockStyle.Fill;
+        keyBridgeHintLabel.Font = CreateUiFont(8.5F, FontStyle.Regular);
+        keyBridgeHintLabel.TextAlign = ContentAlignment.MiddleLeft;
+        keyBridgeHintLabel.Tag = "secondary";
+        keyBridgeHintLabel.AutoEllipsis = true;
+        calibrationSteps = [CreateCalibrationStep("1  返回"), CreateCalibrationStep("2  音量＋"), CreateCalibrationStep("3  音量－")];
+        enhancedKeysButton = CreateButton("启用增强按键", primary: true, tabIndex: 2);
+        enhancedKeysButton.Click += (_, _) => EnhancedKeysToggleRequested?.Invoke(this, EventArgs.Empty);
+        calibrateKeysButton = CreateButton("重新校准", primary: false, tabIndex: 3);
+        calibrateKeysButton.Click += (_, _) => KeyCalibrationRequested?.Invoke(this, EventArgs.Empty);
 
         themeToggleButton = CreateThemeButton();
         themeToggleButton.Click += (_, _) =>
@@ -138,7 +186,7 @@ internal sealed class StatusWindow : Form
 
         batteryValueLabel = CreateLabel("—");
         batteryValueLabel.Dock = DockStyle.Fill;
-        batteryValueLabel.Font = CreateDisplayFont(26F, FontStyle.Bold);
+        batteryValueLabel.Font = CreateDisplayFont(22F, FontStyle.Bold);
         batteryValueLabel.TextAlign = ContentAlignment.MiddleRight;
         batteryValueLabel.AutoEllipsis = false;
         batteryValueLabel.AccessibleName = "遥控器电量：未知";
@@ -149,9 +197,9 @@ internal sealed class StatusWindow : Form
         connectButton.Click += (_, _) =>
             ConnectOrReconnectRequested?.Invoke(this, EventArgs.Empty);
 
-        pauseButton = CreateButton("暂停语音桥", primary: false, tabIndex: 1);
-        pauseButton.AccessibleName = "暂停语音桥";
-        pauseButton.AccessibleDescription = "安全停止当前语音桥或暂停自动重连。";
+        pauseButton = CreateButton("暂停遥控器", primary: false, tabIndex: 1);
+        pauseButton.AccessibleName = "暂停遥控器";
+        pauseButton.AccessibleDescription = "安全停止语音和增强按键，恢复基础按键并暂停自动重连。";
         pauseButton.Click += (_, _) => PauseRequested?.Invoke(this, EventArgs.Empty);
 
         audioRouteButton = CreateButton("检查音频", primary: false, tabIndex: 2);
@@ -200,10 +248,13 @@ internal sealed class StatusWindow : Form
         toolTip.SetToolTip(connectButton, "先安全清理旧会话，再重新连接遥控器。");
         toolTip.SetToolTip(startWithWindowsCheckBox, "只影响当前 Windows 用户，默认关闭。");
         toolTip.SetToolTip(safeExitLink, "退出前会恢复按键钩子并关闭蓝牙会话。");
+        toolTip.SetToolTip(enhancedKeysButton, "启用返回与音量键时，Windows 会请求管理员权限。");
+        toolTip.SetToolTip(calibrateKeysButton, "依次短按并松开返回、音量加、音量减，重新识别遥控器的按键。");
 
         rootLayout = CreateRootLayout();
         statusCard = CreateStatusCard();
         controlsCard = CreateControlsCard();
+        enhancedKeysCard = CreateEnhancedKeysCard();
         remoteGuide = new RemoteGuideControl
         {
             DarkMode = darkMode,
@@ -212,6 +263,7 @@ internal sealed class StatusWindow : Form
         };
 
         BuildLayout();
+        ConstrainSingleCellLayouts(rootLayout);
         Controls.Add(rootLayout);
 
         ApplyTheme();
@@ -228,6 +280,16 @@ internal sealed class StatusWindow : Form
     public event EventHandler? StartWithWindowsToggleRequested;
 
     public event EventHandler? SafeExitRequested;
+
+    public event EventHandler? EnhancedKeysToggleRequested;
+
+    public event EventHandler? KeyCalibrationRequested;
+
+    internal void SetPreviewTheme(bool useDarkMode)
+    {
+        darkMode = useDarkMode;
+        ApplyTheme();
+    }
 
     public void ShowOrActivate()
     {
@@ -250,7 +312,7 @@ internal sealed class StatusWindow : Form
         BringToFront();
     }
 
-    public void ApplyState(TrayUiState state)
+    public void ApplyState(TrayUiState state, bool isPaused = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (IsDisposed)
@@ -260,7 +322,7 @@ internal sealed class StatusWindow : Form
 
         if (InvokeRequired)
         {
-            BeginInvoke(new Action(() => ApplyState(state)));
+            BeginInvoke(new Action(() => ApplyState(state, isPaused)));
             return;
         }
 
@@ -282,6 +344,7 @@ internal sealed class StatusWindow : Form
 
         ApplyBatteryState(state);
         ApplyActionState(state);
+        ApplyKeyBridgeState(state, isPaused || state.Connection == ConnectionPhase.Paused);
         startWithWindowsCheckBox.Checked = state.StartWithWindows;
         startWithWindowsCheckBox.AccessibleDescription = state.StartWithWindows
             ? "已启用。点击可关闭登录 Windows 后自动启动。"
@@ -429,20 +492,19 @@ internal sealed class StatusWindow : Form
             BackColor = darkMode ? DarkCanvasColor : CanvasColor,
             ColumnCount = 1,
             Dock = DockStyle.Top,
-            Height = 1080,
+            Height = 1000,
             Margin = Padding.Empty,
-            Padding = new Padding(40, 28, 40, 18),
-            RowCount = 8
+            Padding = new Padding(32, 20, 32, 16),
+            RowCount = 7
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 94F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 430F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 154F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 128F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 370F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 178F));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
         return layout;
     }
 
@@ -456,13 +518,14 @@ internal sealed class StatusWindow : Form
         var layout = new TableLayoutPanel
         {
             BackColor = Color.Transparent,
-            ColumnCount = 2,
+            ColumnCount = 3,
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
             RowCount = 1
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 78F));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 61F));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24F));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 15F));
 
         var identity = new TableLayoutPanel
         {
@@ -470,14 +533,12 @@ internal sealed class StatusWindow : Form
             ColumnCount = 1,
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
-            RowCount = 3
+            RowCount = 2
         };
-        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
-        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
-        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 28F));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 56F));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 44F));
         identity.Controls.Add(deviceNameLabel, 0, 0);
         identity.Controls.Add(detailLabel, 0, 1);
-        identity.Controls.Add(batteryMetaLabel, 0, 2);
 
         var battery = new TableLayoutPanel
         {
@@ -487,18 +548,15 @@ internal sealed class StatusWindow : Form
             Margin = Padding.Empty,
             RowCount = 2
         };
-        battery.RowStyles.Add(new RowStyle(SizeType.Percent, 72F));
-        battery.RowStyles.Add(new RowStyle(SizeType.Percent, 28F));
+        battery.RowStyles.Add(new RowStyle(SizeType.Percent, 66F));
+        battery.RowStyles.Add(new RowStyle(SizeType.Percent, 34F));
         battery.Controls.Add(batteryValueLabel, 0, 0);
-        var batteryCaption = CreateLabel("遥控器电量");
-        batteryCaption.Dock = DockStyle.Fill;
-        batteryCaption.Font = CreateUiFont(8.5F, FontStyle.Regular);
-        batteryCaption.Tag = "status-secondary";
-        batteryCaption.TextAlign = ContentAlignment.MiddleRight;
-        battery.Controls.Add(batteryCaption, 0, 1);
+        batteryMetaLabel.TextAlign = ContentAlignment.MiddleRight;
+        battery.Controls.Add(batteryMetaLabel, 0, 1);
 
         layout.Controls.Add(identity, 0, 0);
-        layout.Controls.Add(battery, 1, 0);
+        layout.Controls.Add(keyBridgeSummaryLabel, 1, 0);
+        layout.Controls.Add(battery, 2, 0);
         card.Controls.Add(layout);
         return card;
     }
@@ -565,8 +623,101 @@ internal sealed class StatusWindow : Form
         return card;
     }
 
+    private static PillBadge CreateCalibrationStep(string text) => new()
+    {
+        Text = text,
+        Dock = DockStyle.Fill,
+        Margin = new Padding(0, 2, 8, 2),
+        Font = CreateUiFont(8.5F, FontStyle.Regular),
+        AccessibleName = $"按键校准：{text}"
+    };
+
+    private SurfacePanel CreateEnhancedKeysCard()
+    {
+        var card = CreateSurfacePanel(16);
+        card.Dock = DockStyle.Fill;
+        card.Padding = new Padding(20, 10, 20, 10);
+        var layout = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 1,
+            RowCount = 5,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 29F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var heading = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 2,
+            RowCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty
+        };
+        heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114F));
+        var title = CreateLabel("增强按键");
+        title.Dock = DockStyle.Fill;
+        title.Font = CreateUiFont(12F, FontStyle.Bold);
+        title.TextAlign = ContentAlignment.MiddleLeft;
+        heading.Controls.Add(title, 0, 0);
+        heading.Controls.Add(keyBridgeBadge, 1, 0);
+
+        var steps = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 3,
+            RowCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty
+        };
+        for (int index = 0; index < calibrationSteps.Length; index++)
+        {
+            steps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3));
+            steps.Controls.Add(calibrationSteps[index], index, 0);
+        }
+
+        var actions = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 2,
+            RowCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 5, 0, 3)
+        };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58F));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42F));
+        enhancedKeysButton.Margin = new Padding(0, 0, 8, 0);
+        actions.Controls.Add(enhancedKeysButton, 0, 0);
+        actions.Controls.Add(calibrateKeysButton, 1, 0);
+        layout.Controls.Add(heading, 0, 0);
+        layout.Controls.Add(keyBridgeDetailLabel, 0, 1);
+        layout.Controls.Add(steps, 0, 2);
+        layout.Controls.Add(actions, 0, 3);
+        layout.Controls.Add(keyBridgeHintLabel, 0, 4);
+        card.Controls.Add(layout);
+        return card;
+    }
+
     private void BuildLayout()
     {
+        var titleRow = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 2,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            RowCount = 1
+        };
+        titleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 400F));
+        titleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        titleRow.Controls.Add(titleLabel, 0, 0);
+        titleRow.Controls.Add(versionBadge, 1, 0);
         var identityLayout = new TableLayoutPanel
         {
             BackColor = Color.Transparent,
@@ -575,9 +726,9 @@ internal sealed class StatusWindow : Form
             Margin = Padding.Empty,
             RowCount = 2
         };
-        identityLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
+        identityLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 66F));
         identityLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        identityLayout.Controls.Add(titleLabel, 0, 0);
+        identityLayout.Controls.Add(titleRow, 0, 0);
         identityLayout.Controls.Add(introLabel, 0, 1);
 
         var headerLayout = new TableLayoutPanel
@@ -588,20 +739,16 @@ internal sealed class StatusWindow : Form
             Margin = Padding.Empty,
             RowCount = 1
         };
-        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72F));
-        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12F));
-        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 16F));
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126F));
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136F));
         headerLayout.Controls.Add(identityLayout, 0, 0);
         headerLayout.Controls.Add(themeToggleButton, 1, 0);
         headerLayout.Controls.Add(statusBadge, 2, 0);
 
         Control mappingHeading = CreateSectionHeading(
             "遥控器按键",
-            "实拍校准插画 · 当前配置只读");
-
-        Control workflowHeading = CreateSectionHeading(
-            "语音输入工作流",
-            "短按切换 · 长按采音");
+            "当前映射 · 按键状态实时更新");
 
         var workflows = new TableLayoutPanel
         {
@@ -611,19 +758,15 @@ internal sealed class StatusWindow : Form
             Margin = Padding.Empty,
             RowCount = 1
         };
-        workflows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        workflows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        SurfacePanel typelessCard = CreateWorkflowCard(
-            "Typeless",
-            "文本输入",
-            ["轻触开关键", "按住麦克风说话", "松开后再轻触开关键"]);
+        workflows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+        workflows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
         SurfacePanel voiceCard = CreateWorkflowCard(
-            "Codex Voice",
-            "Ctrl + Alt + *",
-            ["轻触菜单键", "按住麦克风说话", "松开完成本段，可继续接话"]);
-        typelessCard.Margin = new Padding(0, 0, 10, 0);
-        voiceCard.Margin = new Padding(10, 0, 0, 0);
-        workflows.Controls.Add(typelessCard, 0, 0);
+            "语音与翻译",
+            "TYPELESS",
+            ["开关键开始输入 · 菜单键开始翻译", "按住麦克风说话，松开停止采音", "再次轻触开关键，完成输入"]);
+        enhancedKeysCard.Margin = new Padding(0, 0, 8, 0);
+        voiceCard.Margin = new Padding(8, 0, 0, 0);
+        workflows.Controls.Add(enhancedKeysCard, 0, 0);
         workflows.Controls.Add(voiceCard, 1, 0);
 
         var footer = new TableLayoutPanel
@@ -637,7 +780,7 @@ internal sealed class StatusWindow : Form
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 78F));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
-        var versionHint = CreateLabel("0.2 Preview · 关闭窗口不会中断语音桥");
+        var versionHint = CreateLabel("MiVibe Remote 0.3  ·  小米蓝牙语音遥控器控制中心");
         versionHint.Dock = DockStyle.Fill;
         versionHint.Font = CreateUiFont(8.5F, FontStyle.Regular);
         versionHint.Tag = "secondary";
@@ -650,10 +793,9 @@ internal sealed class StatusWindow : Form
         rootLayout.Controls.Add(statusCard, 0, 1);
         rootLayout.Controls.Add(mappingHeading, 0, 2);
         rootLayout.Controls.Add(remoteGuide, 0, 3);
-        rootLayout.Controls.Add(workflowHeading, 0, 4);
-        rootLayout.Controls.Add(workflows, 0, 5);
-        rootLayout.Controls.Add(controlsCard, 0, 6);
-        rootLayout.Controls.Add(footer, 0, 7);
+        rootLayout.Controls.Add(workflows, 0, 4);
+        rootLayout.Controls.Add(controlsCard, 0, 5);
+        rootLayout.Controls.Add(footer, 0, 6);
     }
 
     private Control CreateSectionHeading(string title, string subtitle)
@@ -683,6 +825,28 @@ internal sealed class StatusWindow : Form
         layout.Controls.Add(titleText, 0, 0);
         layout.Controls.Add(subtitleText, 1, 0);
         return layout;
+    }
+
+    private static void ConstrainSingleCellLayouts(Control parent)
+    {
+        if (parent is TableLayoutPanel layout)
+        {
+            // An implicit AutoSize row can exceed a short status/header cell at high DPI.
+            if (layout.RowCount == 1 && layout.RowStyles.Count == 0)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            }
+
+            if (layout.ColumnCount == 1 && layout.ColumnStyles.Count == 0)
+            {
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            }
+        }
+
+        foreach (Control child in parent.Controls)
+        {
+            ConstrainSingleCellLayouts(child);
+        }
     }
 
     private SurfacePanel CreateWorkflowCard(
@@ -811,6 +975,111 @@ internal sealed class StatusWindow : Form
         batteryMetaLabel.AccessibleName = $"电量状态：{metaText}";
     }
 
+    private void ApplyKeyBridgeState(TrayUiState state, bool isPaused)
+    {
+        string phase = state.KeyBridge switch
+        {
+            KeyBridgePhase.Starting => "正在启动",
+            KeyBridgePhase.Calibrating => "等待按键",
+            KeyBridgePhase.Active => "已启用",
+            KeyBridgePhase.Reconnecting => "正在重连",
+            KeyBridgePhase.Error => "需要处理",
+            KeyBridgePhase.Stopping => "正在停用",
+            _ => "未启用"
+        };
+        string fallback = state.KeyBridge switch
+        {
+            KeyBridgePhase.Starting => "正在准备增强按键，请留意 Windows 权限提示。",
+            KeyBridgePhase.Calibrating => "按提示依次短按并松开三个键，完成校准。",
+            KeyBridgePhase.Active => "返回 → Delete · 音量＋ / − → 上 / 下一个任务",
+            KeyBridgePhase.Reconnecting => "按键连接中断，正在尝试恢复。",
+            KeyBridgePhase.Error => "增强按键暂不可用，请重试或重新校准。",
+            KeyBridgePhase.Stopping => "正在安全停用增强按键…",
+            _ => "启用后，返回键删除字符，音量键切换任务。"
+        };
+        keyBridgeBadge.Text = phase;
+        keyBridgeBadge.AccessibleName = $"增强按键状态：{phase}";
+        keyBridgeSummaryLabel.Text = $"增强按键 · {phase}";
+        keyBridgeDetailLabel.Text = string.IsNullOrWhiteSpace(state.KeyBridgeDetail)
+            ? fallback : state.KeyBridgeDetail;
+        keyBridgeDetailLabel.AccessibleName = $"增强按键：{keyBridgeDetailLabel.Text}";
+        toolTip.SetToolTip(keyBridgeDetailLabel, keyBridgeDetailLabel.Text);
+        keyBridgeHintLabel.Text = state.KeyBridge == KeyBridgePhase.Calibrating
+            ? "每次按下后松开，亮起下一步时再继续。"
+            : state.KeyBridge == KeyBridgePhase.Active
+                ? string.IsNullOrWhiteSpace(state.LastKeyAction)
+                    ? "活动视图按列表上下切换；请先关闭任务菜单。"
+                    : $"最近操作：{state.LastKeyAction}"
+                : !string.IsNullOrWhiteSpace(state.LastKeyAction)
+                    ? $"最近操作：{state.LastKeyAction}"
+                    : "启用时 Windows 会请求管理员权限。";
+        if (isPaused && !state.KeyBridgeRunning)
+        {
+            keyBridgeHintLabel.Text = "遥控器已暂停，请先连接遥控器，再启用增强按键。";
+        }
+        keyBridgeHintLabel.AccessibleName = keyBridgeHintLabel.Text;
+        string hintDetail = state.KeyBridge == KeyBridgePhase.Active
+            ? "Codex 活动视图按当前已加载列表的顺序切换上一个或下一个任务，到边界停止。" +
+              "请先关闭任务菜单；当前任务无法明确识别时跳过。普通视图沿用默认任务快捷键，无需新增绑定。仅在 Codex 前台生效。" +
+              (string.IsNullOrWhiteSpace(state.LastKeyAction) ? "" : $"\n最近操作：{state.LastKeyAction}")
+            : keyBridgeHintLabel.Text;
+        toolTip.SetToolTip(keyBridgeHintLabel, hintDetail);
+
+        bool started = state.KeyBridgeRunning || state.KeyBridge is KeyBridgePhase.Starting or KeyBridgePhase.Calibrating
+            or KeyBridgePhase.Active or KeyBridgePhase.Reconnecting;
+        enhancedKeysButton.Text = state.KeyBridge == KeyBridgePhase.Stopping
+            ? "正在停用…" : started ? "停用增强按键" : "启用增强按键";
+        enhancedKeysButton.Enabled = !state.OperationInProgress && state.KeyBridge != KeyBridgePhase.Stopping &&
+            (!isPaused || state.KeyBridgeRunning);
+        enhancedKeysButton.AccessibleName = enhancedKeysButton.Text;
+        enhancedKeysButton.AccessibleDescription = started
+            ? "停止返回键和音量键的增强映射。"
+            : "启用返回键和音量键映射，Windows 会请求管理员权限。";
+        calibrateKeysButton.Enabled = !isPaused && !state.OperationInProgress &&
+            state.KeyBridge is KeyBridgePhase.Active or KeyBridgePhase.Calibrating;
+        calibrateKeysButton.AccessibleDescription = "按返回、音量加、音量减的顺序，重新校准三个增强按键。";
+        remoteGuide.ApplyKeyBridgeState(state.KeyBridge);
+        ApplyKeyBridgeTone();
+    }
+
+    private void ApplyKeyBridgeTone()
+    {
+        bool highContrast = SystemInformation.HighContrast;
+        bool active = currentState.KeyBridge == KeyBridgePhase.Active;
+        bool attention = currentState.KeyBridge is KeyBridgePhase.Starting or KeyBridgePhase.Calibrating
+            or KeyBridgePhase.Reconnecting;
+        bool error = currentState.KeyBridge == KeyBridgePhase.Error;
+        Color accent = darkMode ? Color.FromArgb(51, 199, 155) : AccentColor;
+        Color muted = darkMode ? DarkMutedInkColor : MutedInkColor;
+        Color surface = darkMode ? DarkSecondaryButtonColor : Color.FromArgb(234, 240, 236);
+        keyBridgeBadge.BadgeBackColor = highContrast ? SystemColors.Highlight
+            : active ? (darkMode ? Color.FromArgb(14, 81, 61) : Color.FromArgb(217, 240, 229))
+            : error ? (darkMode ? Color.FromArgb(74, 37, 34) : ErrorBackColor)
+            : attention ? (darkMode ? Color.FromArgb(75, 43, 21) : WaitingBackColor) : surface;
+        keyBridgeBadge.BadgeForeColor = highContrast ? SystemColors.HighlightText
+            : active ? accent
+            : error ? (darkMode ? Color.FromArgb(255, 180, 169) : ErrorForeColor)
+            : attention ? (darkMode ? Color.FromArgb(255, 208, 165) : WaitingForeColor) : muted;
+        versionBadge.BadgeBackColor = highContrast ? SystemColors.Highlight : surface;
+        versionBadge.BadgeForeColor = highContrast ? SystemColors.HighlightText : accent;
+        string[] names = ["返回", "音量＋", "音量－"];
+        int step = Math.Clamp(currentState.CalibrationStep, 0, 3);
+        for (int index = 0; index < calibrationSteps.Length; index++)
+        {
+            bool complete = active || currentState.KeyBridge == KeyBridgePhase.Calibrating && index < step;
+            bool current = currentState.KeyBridge == KeyBridgePhase.Calibrating && index == step;
+            PillBadge badge = calibrationSteps[index];
+            badge.Text = complete ? $"✓  {names[index]}" : current ? $"按下  {names[index]}" : $"{index + 1}  {names[index]}";
+            badge.BadgeBackColor = highContrast && (current || complete) ? SystemColors.Highlight
+                : highContrast ? SystemColors.Window
+                : current ? WarmAccentColor : surface;
+            badge.BadgeForeColor = highContrast && (current || complete) ? SystemColors.HighlightText
+                : highContrast ? SystemColors.WindowText
+                : current ? NightForestColor : complete ? accent : muted;
+            badge.AccessibleName = $"校准第 {index + 1} 步，{names[index]}：{(complete ? "已完成" : current ? "请短按并松开" : "等待中")}";
+        }
+    }
+
     private void ApplyActionState(TrayUiState state)
     {
         bool busy = state.OperationInProgress;
@@ -819,16 +1088,16 @@ internal sealed class StatusWindow : Form
         {
             case ConnectionPhase.Connected:
                 SetConnectButton("重新连接", "重新连接遥控器", !busy);
-                SetPauseButton("暂停语音桥", "暂停语音桥", !busy);
+                SetPauseButton("暂停遥控器", "暂停遥控器", !busy);
                 break;
             case ConnectionPhase.ReconnectWaiting:
                 SetConnectButton("立即重连", "立即重新连接遥控器", !busy);
-                SetPauseButton("暂停自动重连", "暂停自动重连", !busy);
+                SetPauseButton("暂停遥控器", "暂停遥控器及自动重连", !busy);
                 break;
             case ConnectionPhase.Starting:
             case ConnectionPhase.Connecting:
                 SetConnectButton("正在连接…", "正在连接遥控器", enabled: false);
-                SetPauseButton("暂停连接", "暂停连接", !busy);
+                SetPauseButton("暂停遥控器", "暂停遥控器连接", !busy);
                 break;
             case ConnectionPhase.Stopping:
                 SetConnectButton("正在安全停止…", "正在安全停止语音桥", enabled: false);
@@ -836,13 +1105,13 @@ internal sealed class StatusWindow : Form
                 break;
             case ConnectionPhase.Paused:
                 SetConnectButton("连接遥控器", "连接遥控器", !busy);
-                SetPauseButton("已暂停", "语音桥已暂停", enabled: false);
+                SetPauseButton("已暂停", "遥控器已暂停", enabled: false);
                 break;
             case ConnectionPhase.Disconnected:
             case ConnectionPhase.Error:
             default:
                 SetConnectButton("连接遥控器", "连接遥控器", !busy);
-                SetPauseButton("暂停语音桥", "暂停语音桥", enabled: false);
+                SetPauseButton("暂停遥控器", "暂停遥控器", enabled: false);
                 break;
         }
 
@@ -924,6 +1193,9 @@ internal sealed class StatusWindow : Form
         controlsCard.FillColor = surface;
         controlsCard.BorderColor = border;
         controlsCard.OutsideColor = canvas;
+        enhancedKeysCard.FillColor = elevatedSurface;
+        enhancedKeysCard.BorderColor = border;
+        enhancedKeysCard.OutsideColor = canvas;
         foreach (SurfacePanel card in workflowCards)
         {
             card.FillColor = elevatedSurface;
@@ -937,6 +1209,7 @@ internal sealed class StatusWindow : Form
         detailLabel.ForeColor = statusSecondary;
         batteryValueLabel.ForeColor = highContrast ? SystemColors.WindowText : WarmAccentColor;
         batteryMetaLabel.ForeColor = statusSecondary;
+        keyBridgeDetailLabel.ForeColor = ink;
         startWithWindowsCheckBox.ForeColor = ink;
         ApplySemanticTextColors(
             rootLayout,
@@ -952,10 +1225,14 @@ internal sealed class StatusWindow : Form
             connectButton.FlatStyle = FlatStyle.System;
             pauseButton.FlatStyle = FlatStyle.System;
             audioRouteButton.FlatStyle = FlatStyle.System;
+            enhancedKeysButton.FlatStyle = FlatStyle.System;
+            calibrateKeysButton.FlatStyle = FlatStyle.System;
             themeToggleButton.FlatStyle = FlatStyle.System;
             connectButton.UseVisualStyleBackColor = true;
             pauseButton.UseVisualStyleBackColor = true;
             audioRouteButton.UseVisualStyleBackColor = true;
+            enhancedKeysButton.UseVisualStyleBackColor = true;
+            calibrateKeysButton.UseVisualStyleBackColor = true;
             themeToggleButton.UseVisualStyleBackColor = true;
             themeToggleButton.Enabled = false;
             themeToggleButton.Text = "系统高对比度";
@@ -965,6 +1242,8 @@ internal sealed class StatusWindow : Form
             StyleButton(connectButton, primary: true, ink, surface, border);
             StyleButton(pauseButton, primary: false, ink, surface, border);
             StyleButton(audioRouteButton, primary: false, ink, surface, border);
+            StyleButton(enhancedKeysButton, primary: true, ink, surface, border);
+            StyleButton(calibrateKeysButton, primary: false, ink, surface, border);
             StyleButton(themeToggleButton, primary: false, ink, surface, border);
             themeToggleButton.Enabled = true;
             themeToggleButton.Text = darkMode ? "浅色模式" : "深色模式";
@@ -981,6 +1260,7 @@ internal sealed class StatusWindow : Form
             : darkMode ? Color.FromArgb(255, 180, 169) : ErrorForeColor;
         safeExitLink.VisitedLinkColor = safeExitLink.LinkColor;
         ApplyStatusTone(currentState.Connection);
+        ApplyKeyBridgeTone();
         ApplyTitleBarTheme();
         Invalidate(true);
     }
@@ -1202,9 +1482,9 @@ internal sealed class StatusWindow : Form
             ConnectionPhase.Starting => "正在准备语音桥…",
             ConnectionPhase.Connecting => "正在连接小米遥控器…",
             ConnectionPhase.Connected =>
-                "BLE · ATVV 16 kHz · VB-CABLE · Typeless / Codex Voice 可用",
+                "麦克风已连接 · 可使用 Typeless 语音输入与翻译",
             ConnectionPhase.ReconnectWaiting => "蓝牙会话已断开，正在等待自动恢复",
-            ConnectionPhase.Paused => "语音桥已暂停，按键钩子已恢复",
+            ConnectionPhase.Paused => "遥控器已暂停，语音与增强按键已停止，基础按键已恢复",
             ConnectionPhase.Stopping => "正在安全清理蓝牙会话和按键钩子…",
             ConnectionPhase.Disconnected => "请确认 Windows 蓝牙已开启且遥控器已配对",
             ConnectionPhase.Error => "连接失败，请检查遥控器和蓝牙状态",

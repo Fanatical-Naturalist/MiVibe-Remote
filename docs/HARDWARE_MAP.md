@@ -53,3 +53,21 @@ Windows 已解析的目标 top-level collection：
 解释：音量键可能使用 Keyboard Page 的 `0x80/0x81`，它们落在 descriptor 范围内但没有被 Windows 键盘翻译层转成事件。Consumer Page 的 Back `0x0224` 没有在该 collection 的 capability 中出现。厂商 report ID 表明设备还存在 Windows 不会转换成普通键盘事件的输入数据。
 
 共享只读打开 HID input report 流时，Windows 返回 `Access Denied (5)`。因此用户态程序只能获取 descriptor 能力，不能直接读取这个系统键盘 collection 的原始 121 字节 report。若必须支持缺失按键，需要可选的 HID filter driver；否则 v0.1 只能映射 Windows 已提供的按键事件。
+
+## 2026-09-05 更新：原始 HID 旁路已在实机验证
+
+上述“需要 HID filter”的结论只适用于当时已测路径，不能作为排他性判断。
+独立的 WUDFHost/Frida 限时探针已读到返回 `F1`、音量 `80/81` 和 TV `35`；
+用户确认返回→单次 Delete、音量→Codex 相邻对话切换正常。
+当前安装版尚未接入这条旁路；细节与未完成的常驻边界见
+[2026-09-05 诊断记录](HID_DIAGNOSTIC_2026-09-05.md)。
+
+## 2026-09-05 追加：0.3 常驻集成候选
+
+0.3 源码将返回、音量旁路作为可选“增强按键”组件接入托盘，采用独立管理员辅助进程；
+每次应用启动都需手动启用，驱动宿主重连后重新进行返回、音量＋、音量－三键校准。
+返回与 Home 均执行一次 Delete，菜单改为 Typeless Translate，音量按 Codex 侧栏顺序
+切换相邻对话且仅在 Codex 前台输出导航。TV 仍保留原始反引号输入。
+
+以上是 0.3 实现状态；独立探针的用户确认不等于新包已经完成实机回归。
+完整安装包的持续使用、麦克风共存与重连验收仍待完成，见 [0.3 说明](RELEASE_NOTES_0.3.0-alpha.1.md)。

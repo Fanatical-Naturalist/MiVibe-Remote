@@ -21,3 +21,11 @@ Release packages include the Microsoft .NET runtime under its own MIT license an
 ## External dependencies not bundled
 
 VB-CABLE, Typeless, and Codex are not redistributed by MiVibe Remote. Users obtain them separately under their respective terms.
+
+## Enhanced keys component (0.3)
+
+The optional `KeyBridge` directory bundles Python 3.13.1, Frida 17.15.3 and a PyInstaller 6.14.2 bootloader. Their license texts are included in `KeyBridge/licenses`. The helper's own Python and JavaScript sources are under this project's MIT license in `src/MiVibe.Remote.KeyBridge`.
+
+- Python: Python Software Foundation License; <https://www.python.org/downloads/release/python-3131/>.
+- Frida: wxWindows Library Licence 3.1; <https://github.com/frida/frida-python> and <https://frida.re>.
+- PyInstaller: GPL with an exception permitting bundled applications; <https://github.com/pyinstaller/pyinstaller/blob/v6.14.2/COPYING.txt>.

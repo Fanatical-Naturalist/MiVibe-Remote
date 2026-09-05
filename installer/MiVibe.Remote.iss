@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.0-alpha.1"
+  #define MyAppVersion "0.3.0-alpha.2"
 #endif
 
 #ifndef SourceRoot
@@ -14,7 +14,7 @@
 #define MyAppPublisher "Fanatical-Naturalist"
 #define MyAppURL "https://github.com/Fanatical-Naturalist/MiVibe-Remote"
 #define MyAppExeName "MiVibe.Remote.Tray.exe"
-#define MyAppMutexes "Local\MiVibe.Remote.Tray-2717-32B8,Local\MiVibe.Remote.GattProbe-2717-32B8"
+#define MyAppMutexes "Local\MiVibe.Remote.Tray-2717-32B8,Local\MiVibe.Remote.GattProbe-2717-32B8,Local\MiVibe.Remote.KeyBridge-2717-32B8"
 
 [Setup]
 AppId=MiVibe.Remote.2717.32B8
@@ -27,8 +27,8 @@ AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 VersionInfoDescription={#MyAppName} hardware preview installer
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion=0.2.0.0
-VersionInfoVersion=0.2.0.0
+VersionInfoProductVersion=0.3.0.0
+VersionInfoVersion=0.3.0.0
 DefaultDirName={autopf}\MiVibe Remote
 DefaultGroupName=MiVibe Remote
 DisableProgramGroupPage=yes
@@ -61,12 +61,12 @@ Name: "keymapping"; Description: "Apply the required remote key mapping (adminis
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\MiVibe Remote"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\MiVibe Remote"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--show-status-window"
 Name: "{group}\Quick Start"; Filename: "{app}\QUICK_START.md"
 Name: "{group}\Enable Remote Key Mapping"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\keyboard-remap\Enable-SplitVoiceRemap.ps1"""; WorkingDir: "{app}"; IconFilename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"
 Name: "{group}\Disable Remote Key Mapping"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\keyboard-remap\Disable-VoiceRemap.ps1"""; WorkingDir: "{app}"; IconFilename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"
 Name: "{group}\MiVibe Remote on GitHub"; Filename: "{#MyAppURL}"
-Name: "{autodesktop}\MiVibe Remote"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\MiVibe Remote"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--show-status-window"; Tasks: desktopicon
 
 [Registry]
 Root: HKLM64; Subkey: "SYSTEM\CurrentControlSet\Control\Keyboard Layout"; ValueType: binary; ValueName: "Scancode Map"; ValueData: "00 00 00 00 00 00 00 00 03 00 00 00 35 e0 5e e0 64 00 3f 00 00 00 00 00"; Tasks: keymapping; BeforeInstall: RememberKeyMappingState; AfterInstall: CaptureKeyMappingResult

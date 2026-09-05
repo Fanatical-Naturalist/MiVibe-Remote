@@ -1,12 +1,29 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.0-alpha.1",
+    [string]$Version = "",
+    [string]$KeyBridgeDirectory = "",
     [string]$InnoCompiler = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = (Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim()
+}
+if ($Version -notmatch '^0\.3\.0-alpha\.[1-9][0-9]*$') {
+    throw 'This release configuration targets 0.3.0-alpha previews.'
+}
+$releaseNotes = Join-Path $projectRoot "docs\RELEASE_NOTES_$Version.md"
+if (-not (Test-Path -LiteralPath $releaseNotes)) {
+    throw "Release notes are required for $Version."
+}
+if ([string]::IsNullOrWhiteSpace($KeyBridgeDirectory)) {
+    $KeyBridgeDirectory = Join-Path $projectRoot 'artifacts\keybridge\MiVibe.Remote.KeyBridge'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $KeyBridgeDirectory 'MiVibe.Remote.KeyBridge.exe'))) {
+    throw 'Build the enhanced key helper first with tools/Build-KeyBridge.ps1.'
+}
 $artifactRoot = Join-Path $projectRoot 'artifacts\release'
 $buildArtifactRoot = Join-Path $projectRoot "artifacts\build\$Version"
 $packageName = "MiVibe-Remote-$Version-win-x64"
@@ -49,11 +66,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination $publishDirectory
+Copy-Item -LiteralPath (Join-Path $projectRoot "README.zh-CN.md") -Destination $publishDirectory
 Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSE") -Destination $publishDirectory
 Copy-Item -LiteralPath (Join-Path $projectRoot "THIRD-PARTY-NOTICES.md") -Destination $publishDirectory
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\\QUICK_START.md") -Destination $publishDirectory
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\\RELEASE_NOTES_V0.2.0_ALPHA1.md") `
+Copy-Item -LiteralPath $releaseNotes `
     -Destination (Join-Path $publishDirectory "RELEASE_NOTES.md")
+Copy-Item -LiteralPath $KeyBridgeDirectory -Destination (Join-Path $publishDirectory 'KeyBridge') -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\assets') `
     -Destination (Join-Path $publishDirectory 'docs\assets') `
     -Recurse
@@ -76,7 +95,7 @@ $payloadChecksumLines = Get-ChildItem -LiteralPath $publishDirectory -File -Recu
             throw "Payload file escaped the publish directory: $($_.FullName)"
         }
         $relativePath = $_.FullName.Substring($publishDirectory.Length).
-            TrimStart([char[]]'\/').Replace("\\", "/")
+            TrimStart([char[]]'\/').Replace('\', '/')
         $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         "$hash  $relativePath"
     }

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0-alpha.2 — 2026-09-06 (hardware preview)
+
+- Pause and safe exit revoke key actions immediately while the observation helper cleans up.
+- Paused controls require resuming the remote before enhanced keys can be enabled again.
+- Reconnecting replaces a failed key controller while preserving a healthy controller.
+- Start-menu shortcuts show the existing control center when MiVibe is already running.
+- Volume navigation in Codex Activity view follows the displayed, loaded task rows
+  instead of the narrower list used by Codex's default previous/next shortcuts.
+- Ordinary-view shortcut fallback submits one complete batch and releases only
+  accepted keys after a partial send. Activity-list boundaries do not wrap.
+- Retains alpha.1 key mappings, UI and the packaged observation helper.
+
+## 0.3.0-alpha.1 — 2026-09-05 (local preview)
+
+- Integrated Back → Delete, Menu → Typeless Translate, and Volume → adjacent
+  Codex conversation navigation. Menu, Home and enhanced actions share one queue.
+- Added an optional packaged Windows administrator helper, three-key calibration,
+  driver reconnect handling, and safe shutdown through an authenticated local pipe.
+- Refreshed the native control center with light/dark themes, live enhanced-key
+  status, calibration steps, updated remote guide and recent action feedback.
+- Built the self-contained x64 installer and portable archive. Python, JavaScript
+  parser/lifecycle tests and the packaged helper's live readiness/exit checks passed.
+- This is a local preview. Integrated physical-key acceptance and installation
+  upgrade testing remain separate from the earlier successful individual probes.
+
 ## 0.2.0-alpha.1 — 2026-09-02
 
 First public hardware preview.

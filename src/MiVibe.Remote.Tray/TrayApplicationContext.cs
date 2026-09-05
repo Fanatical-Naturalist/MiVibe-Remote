@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Text;
+using MiVibe.Remote.GattProbe;
 
 namespace MiVibe.Remote.Tray;
 
@@ -23,6 +24,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer? smokeTestTimer;
     private readonly System.Windows.Forms.Timer reconnectTimer;
     private readonly bool reconnectSmokeTest;
+    private readonly EnhancedKeyBridge enhancedKeys = new();
+    private readonly ToolStripMenuItem enhancedKeysItem;
+    private RemoteKeyActions? keyActions;
+    private KeyBridgePhase keyBridgePhase = KeyBridgePhase.Disabled;
+    private string keyBridgeDetail = "启用后可使用返回和音量键。";
+    private int calibrationStep;
+    private string? lastKeyAction;
+    private bool keyOperationInProgress;
 
     private Process? bridgeProcess;
     private EventWaitHandle? shutdownEvent;
@@ -50,11 +59,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
         reconnectTimer = new System.Windows.Forms.Timer();
         reconnectTimer.Tick += OnReconnectTimerElapsed;
         TryOpenLog();
+        enhancedKeys.Diagnostic += WriteLog;
+        enhancedKeys.KeyPressed += key => Volatile.Read(ref keyActions)?.TryQueueRemoteKey(key);
+        enhancedKeys.StateChanged += (phase, detail, step) => PostToUi(() =>
+        {
+            keyBridgePhase = phase;
+            keyBridgeDetail = detail;
+            calibrationStep = step;
+            PublishUiState();
+        });
 
         statusItem = new ToolStripMenuItem("状态：正在启动") { Enabled = false };
         batteryItem = new ToolStripMenuItem("电量：未知") { Enabled = false };
         startItem = new ToolStripMenuItem("连接遥控器", null, OnStartClicked);
-        pauseItem = new ToolStripMenuItem("暂停语音桥", null, OnPauseClicked);
+        pauseItem = new ToolStripMenuItem("暂停遥控器", null, OnPauseClicked);
+        enhancedKeysItem = new ToolStripMenuItem("启用增强按键", null, OnEnhancedKeysClicked);
         audioStatusItem = new ToolStripMenuItem("检查音频路由", null, OnAudioStatusClicked);
         startWithWindowsItem = new ToolStripMenuItem(
             "开机自动启动",
@@ -72,6 +91,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(startItem);
         menu.Items.Add(pauseItem);
+        menu.Items.Add(enhancedKeysItem);
         menu.Items.Add(audioStatusItem);
         menu.Items.Add(startWithWindowsItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -117,6 +137,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             statusWindow = null;
             smokeTestTimer?.Dispose();
             reconnectTimer.Dispose();
+            enhancedKeys.Dispose();
+            Interlocked.Exchange(ref keyActions, null)?.Dispose();
             dispatcher.Dispose();
             shutdownEvent?.Dispose();
             lock (logLock)
@@ -129,10 +151,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         base.Dispose(disposing);
     }
 
+    internal void ShowControlCenter() => PostToUi(() =>
+    {
+        if (!exiting)
+        {
+            OnNotifyIconDoubleClick(this, EventArgs.Empty);
+        }
+    });
+
     private void OnNotifyIconDoubleClick(object? sender, EventArgs args)
     {
         StatusWindow window = GetOrCreateStatusWindow();
-        window.ApplyState(CreateUiState());
+        window.ApplyState(CreateUiState(), isPaused: paused);
         window.ShowOrActivate();
     }
 
@@ -149,6 +179,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         window.AudioRouteRequested += OnAudioStatusClicked;
         window.StartWithWindowsToggleRequested += OnStartWithWindowsClicked;
         window.SafeExitRequested += OnExitClicked;
+        window.EnhancedKeysToggleRequested += OnEnhancedKeysClicked;
+        window.KeyCalibrationRequested += OnKeyCalibrationClicked;
         statusWindow = window;
         return window;
     }
@@ -182,7 +214,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void OnPauseClicked(object? sender, EventArgs args)
     {
-        if (stopping || exiting)
+        if (stopping || exiting || keyOperationInProgress)
         {
             return;
         }
@@ -191,6 +223,88 @@ internal sealed class TrayApplicationContext : ApplicationContext
             "已暂停",
             markPaused: true,
             showBalloon: true);
+    }
+
+    private void EnsureKeyActions()
+    {
+        if (keyActions is { IsAvailable: true })
+        {
+            return;
+        }
+
+        RemoteKeyActions? previous = Interlocked.Exchange(ref keyActions, null);
+        if (previous is not null)
+        {
+            WriteLog("Unified remote key controller is unavailable; disposing it before recovery.");
+            previous.Dispose();
+        }
+
+        var actions = new RemoteKeyActions();
+        actions.ActionObserved += action =>
+        {
+            WriteLog($"[keys] {action}");
+            PostToUi(() =>
+            {
+                if (!ReferenceEquals(keyActions, actions))
+                {
+                    return;
+                }
+
+                lastKeyAction = action;
+                PublishUiState();
+            });
+        };
+        Volatile.Write(ref keyActions, actions);
+        lastKeyAction = previous is not null ? "按键映射已恢复" : "按键映射已就绪";
+        WriteLog("Unified remote key controller started.");
+    }
+
+    private async void OnEnhancedKeysClicked(object? sender, EventArgs args)
+    {
+        if (stopping || exiting || keyOperationInProgress)
+        {
+            return;
+        }
+
+        if (paused && !enhancedKeys.IsRunning)
+        {
+            WriteLog("Enhanced key start ignored while paused; reconnect the remote to resume.");
+            return;
+        }
+
+        keyOperationInProgress = true;
+        PublishUiState();
+        try
+        {
+            if (enhancedKeys.IsRunning)
+            {
+                await enhancedKeys.StopAsync();
+            }
+            else
+            {
+                EnsureKeyActions();
+                await enhancedKeys.StartAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            WriteLog($"Enhanced keys operation failed: {exception.GetType().Name}.");
+            keyBridgePhase = KeyBridgePhase.Error;
+            keyBridgeDetail = "增强按键暂不可用，请重新启用。";
+        }
+        finally
+        {
+            keyOperationInProgress = false;
+            PublishUiState();
+        }
+    }
+
+    private async void OnKeyCalibrationClicked(object? sender, EventArgs args)
+    {
+        if (!paused && !stopping && !exiting && !keyOperationInProgress)
+        {
+            await enhancedKeys.RecalibrateAsync();
+        }
     }
 
     private async void OnAudioStatusClicked(object? sender, EventArgs args)
@@ -241,7 +355,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void OnExitClicked(object? sender, EventArgs args)
     {
-        if (exiting || stopping)
+        if (exiting || stopping || keyOperationInProgress)
         {
             return;
         }
@@ -302,6 +416,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
+            EnsureKeyActions();
             string eventName = $"Local\\MiVibeRemote-{Environment.ProcessId}-{Guid.NewGuid():N}";
             shutdownEvent?.Dispose();
             shutdownEvent = new EventWaitHandle(
@@ -312,7 +427,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ProcessStartInfo startInfo = CreateProbeStartInfo(
                 reconnectSmokeTest
                     ? "--audio-status"
-                    : $"--resident --shutdown-event \"{eventName}\" " +
+                    : $"--resident --external-key-controller --shutdown-event \"{eventName}\" " +
                       $"--parent-pid {Environment.ProcessId}");
             var process = new Process
             {
@@ -363,6 +478,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         paused = markPaused;
         CancelReconnect();
+        if (markPaused)
+        {
+            stopping = true;
+            SetStatus(ConnectionPhase.Stopping, "正在安全停止", bridgeProcess is { HasExited: false });
+            // StopAsync revokes transport delivery before its first await. Cancel
+            // the shared queue and native hooks before waiting for helper cleanup.
+            Task<bool> stopEnhancedKeys = enhancedKeys.StopAsync();
+            Interlocked.Exchange(ref keyActions, null)?.Dispose();
+            lastKeyAction = "按键映射已暂停";
+            PublishUiState();
+            bool keysStopped = await stopEnhancedKeys;
+            if (!keysStopped)
+            {
+                stopping = false;
+                SetStatus(ConnectionPhase.Error, "增强按键仍在退出，请稍后重试", bridgeProcess is { HasExited: false });
+                return false;
+            }
+        }
         Process? process = bridgeProcess;
         if (process is null || process.HasExited)
         {
@@ -413,7 +546,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             bridgeIsRunning: false);
         if (!exiting && showBalloon)
         {
-            ShowBalloon("MiVibe Remote", "语音桥已暂停，遥控器按键钩子已恢复。");
+            ShowBalloon("MiVibe Remote", "语音桥和增强按键已暂停。");
         }
 
         return true;
@@ -448,7 +581,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     "MiVibe Remote",
                     recovered
                         ? "蓝牙语音桥已自动恢复。"
-                        : "语音桥已就绪：开关键用于 Typeless，菜单键用于 Codex Voice，Home 键用于 Delete。");
+                        : "语音桥已就绪：开关键用于 Typeless，菜单键用于 Translate，Home 键用于 Delete。");
             });
         }
         else if (args.Data.Contains("ATVV capture failed", StringComparison.OrdinalIgnoreCase) ||
@@ -698,7 +831,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             !stopping &&
             !exiting &&
             phase is not ConnectionPhase.Connecting;
-        pauseItem.Text = reconnectScheduled ? "暂停自动重连" : "暂停语音桥";
+        pauseItem.Text = reconnectScheduled ? "暂停自动重连" : "暂停遥控器";
         exitItem.Enabled = !stopping && !exiting;
         PublishUiState();
     }
@@ -748,11 +881,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
             OperationInProgress: stopping ||
                 connectionPhase is ConnectionPhase.Starting or
                     ConnectionPhase.Connecting or
-                    ConnectionPhase.Stopping);
+                    ConnectionPhase.Stopping || keyOperationInProgress,
+            KeyBridge: keyBridgePhase,
+            KeyBridgeDetail: keyBridgeDetail,
+            CalibrationStep: calibrationStep,
+            LastKeyAction: lastKeyAction,
+            KeyBridgeRunning: enhancedKeys.IsRunning);
     }
 
     private void PublishUiState()
     {
+        enhancedKeysItem.Text = enhancedKeys.IsRunning ? "关闭增强按键" : "启用增强按键";
+        enhancedKeysItem.Enabled = !stopping && !exiting && !keyOperationInProgress &&
+            (!paused || enhancedKeys.IsRunning);
         batteryItem.Text = batteryFreshness switch
         {
             BatteryFreshness.Current when batteryLevel is int level =>
@@ -762,7 +903,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _ => "电量：未知"
         };
 
-        statusWindow?.ApplyState(CreateUiState());
+        statusWindow?.ApplyState(CreateUiState(), isPaused: paused);
     }
 
     private void ShowBalloon(string title, string message)
@@ -788,7 +929,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        dispatcher.BeginInvoke(action);
+        try
+        {
+            dispatcher.BeginInvoke(action);
+        }
+        catch (InvalidOperationException) when (dispatcher.IsDisposed || !dispatcher.IsHandleCreated)
+        {
+            // A worker can finish while the UI is disposing after safe exit.
+        }
     }
 
     private void PostBridgeToUi(Process sourceProcess, Action action)

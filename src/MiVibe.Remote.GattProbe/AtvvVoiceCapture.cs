@@ -75,7 +75,8 @@ internal static class AtvvVoiceCapture
         IReadOnlyList<GattDeviceService> services,
         double gainDb,
         string renderDeviceName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool externalKeyController = false)
     {
         GattDeviceService? service = services.FirstOrDefault(item => item.Uuid == ServiceUuid);
         if (service is null)
@@ -110,7 +111,7 @@ internal static class AtvvVoiceCapture
             renderDeviceName,
             shouldControlTypeless: false,
             shouldOpenCodexVoice: false,
-            shouldControlCodexVoiceWithMenu: true,
+            shouldControlCodexVoiceWithMenu: !externalKeyController,
             retainAudio: false,
             cancellationToken);
     }
@@ -282,8 +283,8 @@ internal static class AtvvVoiceCapture
                 {
                     menuVoiceShortcutHook = new MenuVoiceShortcutHook();
                     Console.WriteLine(
-                        "Menu-controlled Codex Voice armed. Tap the remote Menu key to open or " +
-                        "close Voice, then hold the remote microphone button while speaking. " +
+                        "Menu-controlled Typeless Translate armed. Tap Menu to send RightShift+T, " +
+                        "hold the microphone while speaking, then tap Power to finish in Typeless. " +
                         "Tap Home for one Delete. The computer backtick key remains available " +
                         "for coding; the physical computer Home key is reserved while this bridge runs.");
                 }
